@@ -1,0 +1,82 @@
+const { Client, FileType } = require('basic-ftp');
+const path = require('path');
+
+class IHMService {
+  constructor(IP, user, password) {
+    this.IP = IP;
+    this.user = user;
+    this.password = password;
+    this.client = new Client();
+    this.client.ftp.verbose = true;
+  }
+
+  async getArc(localDir) {
+    const remoteDir = 'InternalStorage/data/relatorios';
+    try {
+      await this.client.access({ host: this.IP, user: this.user, password: this.password });
+      console.log(`Navegando para o diretório remoto: ${remoteDir}`);
+      await this.client.cd(remoteDir);
+
+      const fileList = await this.client.list();
+      console.log('Arquivos encontrados:', fileList.map(f => f.name));
+
+      const csvFiles = fileList.filter(item => item.type === FileType.File && item.name.toLowerCase().endsWith('.csv'));
+      if (csvFiles.length === 0) {
+        console.error('Nenhum arquivo .csv encontrado no diretório remoto.');
+        return null;
+      }
+
+      for (const file of csvFiles) {
+        try {
+          file.modifiedAt = await this.client.lastMod(file.name);
+        } catch (err) {
+          console.warn(`Não foi possível obter data de modificação para ${file.name}`);
+          file.modifiedAt = new Date(0);
+        }
+      }
+
+      csvFiles.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
+      const selectedFile = csvFiles[0].name;
+      const localPath = path.join(localDir, selectedFile);
+
+      console.log(`Baixando o arquivo mais recente: ${selectedFile}`);
+      await this.client.downloadTo(localPath, selectedFile);
+      console.log(`Arquivo ${selectedFile} baixado com sucesso!`);
+
+      return { success: true, file: selectedFile, localPath };
+    } catch (error) {
+      if (error.code === 'ETIMEDOUT') {
+        console.error('Erro: Conexão com o servidor FTP expirou (timeout).');
+        throw new Error('Não foi possível conectar ao servidor FTP: tempo esgotado.');
+      } else if (error.code === 'ECONNREFUSED') {
+        console.error('Erro: Conexão recusada pelo servidor.');
+        throw new Error('Conexão recusada pelo servidor FTP.');
+      } else {
+        console.error('Erro ao baixar arquivo:', error);
+        throw new Error('Erro inesperado ao baixar arquivo.');
+      }
+    } finally {
+      this.client.close();
+    }
+  }
+
+  async getDir(local, remote) {
+    try {
+      await this.client.access({ host: this.IP, user: this.user, password: this.password });
+      await this.client.downloadToDir(local, remote);
+      return { success: true };
+    } catch (error) {
+      if (error.code === 'ETIMEDOUT') {
+        console.error('Erro: Conexão com o servidor FTP expirou (timeout).');
+        throw new Error('Timeout de conexão FTP.');
+      } else {
+        console.error('Erro ao baixar diretório:', error);
+        throw new Error('Erro ao baixar diretório.');
+      }
+    } finally {
+      this.client.close();
+    }
+  }
+}
+
+module.exports = IHMService;

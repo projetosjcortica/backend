@@ -1,19 +1,19 @@
 const dbService = require('../services/dbService');
 
-exports.cleanDb = async (req, res) => {
+exports.cleanDb = async (req, res, next) => {
   try {
     const result = await dbService.cleanDatabase();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
 
-exports.getTable = async (req, res) => {
+exports.getTable = async (req, res, next) => {
   try {
     const result = await dbService.getTableData();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 };
