@@ -1,0 +1,24 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "nada aqui ainda...",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/projetosjcortica/backend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/projetosjcortica/backend/issues"
+  },
+  "homepage": "https://github.com/projetosjcortica/backend#readme",
+  "dependencies": {
+    "expressjs": "^1.0.1"
+  }
+}

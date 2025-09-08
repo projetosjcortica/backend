@@ -1,0 +1,8 @@
+- [ ] conexao ihm
+- [ ] ler csv
+- [ ] criar uma classe para interpretar linhas do csv
+- [ ] enviar csv formatado para banco de dados
+- [ ] enviar informacoes pro repositorio
+- [ ] comunicacao com frontend
+- [ ] documentacao
+- [ ] criacao de tests
