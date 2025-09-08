@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "lint": "eslint . || true"
+    "lint": "eslint . || true",
+    "test": "jest --runInBand"
   },
   "repository": {
     "type": "git",
@@ -33,6 +34,8 @@
   },
   "devDependencies": {
     "eslint": "^8.50.0",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "jest": "^29.0.0",
+    "supertest": "^6.3.3"
   }
 }

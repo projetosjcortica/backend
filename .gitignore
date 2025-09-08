@@ -31,3 +31,6 @@ yarn-error.log*
 *.spec.ts
 debug/
 logs/
+backups/
+work/
+processed/

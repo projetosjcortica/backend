@@ -51,13 +51,23 @@ app.use('/work', express.static(path.join(__dirname, 'work')));
 // Error handler (deve ficar após as rotas)
 app.use(errorHandler);
 
-const server = app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+let server;
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down...');
-  server.close(() => process.exit(0));
-});
+function startServer() {
+  server = app.listen(port, () => {
+    console.log(`Servidor rodando na porta ${port}`);
+  });
+
+  process.on('SIGINT', () => {
+    console.log('Shutting down...');
+    server.close(() => process.exit(0));
+  });
+}
+
+// start if run directly
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;
 
