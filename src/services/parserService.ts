@@ -20,19 +20,23 @@ export default {
     return new Promise((resolve, reject) => {
       const rows: any[] = [];
       fs.createReadStream(filePath)
-        .pipe(parse({ headers: false, trim: true }))
-  .on('error', (err: unknown) => reject(err))
+        .pipe(parse({ headers: true, trim: true, delimiter: ';' }))
+        .on('error', (err: unknown) => reject(err))
         .on('data', (row: any) => {
           try {
-            const dateStr = row[0];
-            const timeStr = row[1];
-            const label = row[2];
-            const group = row[3];
-            const flag = row[4];
-            const values = row.slice(5).map((v: string) => {
-              const n = Number(v);
-              return Number.isNaN(n) ? null : n;
-            });
+            const dateStr = row['date'] || row['Date'] || row[0];
+            const timeStr = row['time'] || row['Time'] || row[1];
+            const label = row['label'] || row['Label'] || row['label'];
+            const group = row['group'] || row['Group'] || row['group'];
+            const flag = row['flag'] || row['Flag'] || row['flag'];
+            // collect remaining numeric columns
+            const values: number[] = [];
+            for (const k of Object.keys(row)) {
+              if (!['date', 'time', 'label', 'group', 'flag', 'Date', 'Time', 'Label', 'Group', 'Flag'].includes(k)) {
+                const n = Number(row[k]);
+                values.push(Number.isNaN(n) ? null as any : n);
+              }
+            }
             const datetime = parseDateTime(dateStr, timeStr);
             rows.push({ datetime: datetime.toISOString(), label, group: Number(group) || null, flag: Number(flag) || null, values });
           } catch (e) {

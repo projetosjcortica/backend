@@ -1,5 +1,4 @@
 node_modules/
-
 .env
 package-lock.json
 dist/
@@ -32,3 +31,5 @@ logs/
 backups/
 work/
 processed/
+tmp/
+types/

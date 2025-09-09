@@ -11,6 +11,7 @@ import errorHandler from './middleware/errorHandler';
 import fileController from './controllers/fileController';
 import ihmController from './controllers/ihmController';
 import paginateController from './controllers/paginateController';
+import dbController from './controllers/dbController';
 
 import multer from 'multer';
 
@@ -32,6 +33,8 @@ app.get('/', (req: Request, res: Response) => res.json({ message: 'Started backe
 app.post('/upload-file', upload.single('file'), fileController.uploadFile as any);
 app.post('/ihm/fetch', express.json(), ihmController.fetchLatestFromIHM as any);
 app.get('/data', paginateController.paginate as any);
+app.get('/batches', dbController.listBatches as any);
+app.get('/batches/:id', dbController.getBatch as any);
 
 app.use('/backups', express.static(path.join(__dirname, '..', 'backups')));
 app.use('/work', express.static(path.join(__dirname, '..', 'work')));

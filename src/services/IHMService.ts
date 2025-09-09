@@ -14,15 +14,45 @@ export default class IHMService {
     this.client.ftp.verbose = true;
   }
 
+  // Determine if a remote filename should be excluded (system backups)
+  // You can override via environment variable IHM_EXCLUDE_REGEX with one or more
+  // comma-separated regular expressions (JS syntax, without //).
+  static isExcludedFile(name: string) {
+    const raw = process.env.IHM_EXCLUDE_REGEX || '';
+    const userRegexes = raw
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => {
+        try { return new RegExp(s, 'i'); } catch (e) { return null; }
+      })
+      .filter(Boolean) as RegExp[];
+
+    const defaults: RegExp[] = [/_sys/i, /^Relatorio_\d{2}_\d{2}(_sys)?\.csv$/i, /^Relatorio_\d{1,2}\.csv$/i];
+    const patterns = [...userRegexes, ...defaults];
+    for (const r of patterns) {
+      if (r.test(name)) return true;
+    }
+    return false;
+  }
+
   async getArc(localDir: string) {
-    const remoteDir = 'InternalStorage/data/relatorios';
+    const remoteDir = '/InternalStorage/data/';
     try {
       await this.client.access({ host: this.IP, user: this.user, password: this.password });
       console.log(`Navegando para o diretório remoto: ${remoteDir}`);
       await this.client.cd(remoteDir);
       const fileList = await this.client.list();
       console.log('Arquivos encontrados:', fileList.map(f => f.name));
-      const csvFiles = fileList.filter(item => item.type === FileType.File && item.name.toLowerCase().endsWith('.csv'));
+      let csvFiles = fileList.filter(item => item.type === FileType.File && item.name.toLowerCase().endsWith('.csv'));
+      // filter out system backups according to patterns
+      csvFiles = csvFiles.filter(f => {
+        if (IHMService.isExcludedFile(f.name)) {
+          console.log('Excluding system/backup file from download:', f.name);
+          return false;
+        }
+        return true;
+      });
       if (csvFiles.length === 0) {
         console.error('Nenhum arquivo .csv encontrado no diretório remoto.');
         return null;
@@ -83,3 +113,5 @@ export default class IHMService {
     }
   }
 }
+// TODO: Fazer um sistema de auto busca periodica
+// TODO 
