@@ -22,8 +22,6 @@ yarn-error.log*
 *.seed
 *.sqlite
 *.db
-*.test.js
-*.test.ts
 *.spec.js
 *.spec.ts
 debug/
