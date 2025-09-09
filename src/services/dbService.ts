@@ -48,3 +48,22 @@ export async function saveBatch(batchPayload: any) {
 
   return saved;
 }
+
+export async function getBatchesPaginated(page = 1, pageSize = 50) {
+  await initDb();
+  const repo = AppDataSource.getRepository(Batch);
+  const [items, total] = await repo.findAndCount({ order: { id: 'DESC' }, skip: (page - 1) * pageSize, take: pageSize });
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return { page, pageSize, total, totalPages, items };
+}
+
+export async function getRowsPaginated(batchId: number | null, page = 1, pageSize = 300) {
+  await initDb();
+  const repo = AppDataSource.getRepository(Row);
+  const qb = repo.createQueryBuilder('row').leftJoinAndSelect('row.batch', 'batch');
+  if (batchId) qb.where('batch.id = :id', { id: batchId });
+  qb.orderBy('row.id', 'ASC').skip((page - 1) * pageSize).take(pageSize);
+  const [items, total] = await qb.getManyAndCount();
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return { page, pageSize, total, totalPages, items };
+}

@@ -6,6 +6,8 @@ export default class FileCSV {
   filePath: string | null = null;
   rows: any[] = [];
   headers: string[] | null = null;
+  // index by label for O(1) lookups
+  private indexByLabel: Map<string, any[]> = new Map();
 
   constructor(filePath?: string) {
     if (filePath) this.filePath = filePath;
@@ -38,7 +40,14 @@ export default class FileCSV {
             const n = Number(v);
             return Number.isNaN(n) ? null : n;
           });
-          this.rows.push({ date, time, label, group: group ? Number(group) : null, flag: flag ? Number(flag) : null, values });
+          const row = { date, time, label, group: group ? Number(group) : null, flag: flag ? Number(flag) : null, values };
+          this.rows.push(row);
+          // populate index
+          if (label) {
+            const arr = this.indexByLabel.get(label) || [];
+            arr.push(row);
+            this.indexByLabel.set(label, arr);
+          }
         }
         resolve({ rows: this.rows.length });
       } catch (err) {
@@ -53,6 +62,30 @@ export default class FileCSV {
 
   getRow(i: number) {
     return this.rows[i] || null;
+  }
+
+  // Rebuild index (useful if rows are mutated externally)
+  buildIndex() {
+    this.indexByLabel = new Map();
+    for (const r of this.rows) {
+      if (!r || !r.label) continue;
+      const arr = this.indexByLabel.get(r.label) || [];
+      arr.push(r);
+      this.indexByLabel.set(r.label, arr);
+    }
+  }
+
+  // Return all rows with the exact label (fast O(1) lookup via Map)
+  findByLabel(label: string) {
+    return this.indexByLabel.get(label) || [];
+  }
+
+  // Find the first row where label starts with prefix
+  findFirstLabelLike(prefix: string) {
+    for (const [label, arr] of this.indexByLabel.entries()) {
+      if (label && label.startsWith(prefix)) return arr[0];
+    }
+    return null;
   }
 
   mapRows(fn: (row: any, idx: number) => any) {

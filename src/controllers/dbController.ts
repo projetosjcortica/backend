@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppDataSource } from '../services/dbService';
+import { AppDataSource, getBatchesPaginated } from '../services/dbService';
 import { Batch } from '../entities/Batch';
 
 export default {
   listBatches: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!AppDataSource.isInitialized) await AppDataSource.initialize();
-      const repo = AppDataSource.getRepository(Batch);
-      const items = await repo.find({ relations: ['rows'], order: { id: 'DESC' } as any, take: 50 });
-      res.json({ items });
+      const page = Math.max(1, Number(req.query.page || 1));
+      const pageSize = Math.max(1, Number(req.query.pageSize || 50));
+      const out = await getBatchesPaginated(page, pageSize);
+      res.json(out);
     } catch (err) {
       next(err);
     }

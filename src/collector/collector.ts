@@ -62,6 +62,9 @@ export function stopCollector() {
   STOP = true;
 }
 
+// in-memory cache of processed files for quick membership tests (hash table semantics)
+const processedFiles: Set<string> = new Set();
+
 export async function startCollector() {
   const host = process.env.IHM_HOST || '192.168.5.200';
   const user = process.env.IHM_USER || 'anonymous';
@@ -73,6 +76,14 @@ export async function startCollector() {
   }
 
   console.log('Starting collector for IHM host', host, 'poll interval', POLL_INTERVAL);
+
+  // warm-up processedFiles cache from processed directory markers
+  try {
+    const doneFiles = fs.readdirSync(PROCESSED_DIR).filter(f => f.endsWith('.done'));
+    for (const d of doneFiles) processedFiles.add(d.replace(/\.done$/, ''));
+  } catch (e) {
+    // ignore
+  }
 
   while (!STOP) {
     try {
@@ -86,9 +97,13 @@ export async function startCollector() {
         const base = path.basename(downloadedPath);
         const processedPath = path.join(PROCESSED_DIR, base + '.json');
 
-        // if already processed, skip
-        if (fs.existsSync(processedPath)) {
+        // if already processed, skip (use in-memory Set for O(1) checks)
+        if (processedFiles.has(base)) {
           console.log('Already processed:', base);
+        } else if (fs.existsSync(processedPath)) {
+          // ensure cache matches disk state
+          processedFiles.add(base);
+          console.log('Already processed (disk):', base);
         } else {
           console.log('Processing', base);
             // parse/normalize via FileCSV (POO wrapper)
@@ -98,11 +113,18 @@ export async function startCollector() {
             // write processed JSON
             fs.writeFileSync(parsed.processedPath, JSON.stringify({ source: base, rows: fileCsv.rows }, null, 2));
 
-          // backup original and work copy
+          // Backup processed JSON and original CSV AFTER processing
           try {
+            // backup the processed JSON (work copy)
+            await backupService.backupFile({ path: parsed.processedPath, originalname: base + '.processed.json', mimetype: 'application/json', size: fs.statSync(parsed.processedPath).size });
+          } catch (bErr) {
+            console.warn('Backup of processed JSON failed for', base, bErr);
+          }
+          try {
+            // backup the original downloaded CSV
             await backupService.backupFile({ path: downloadedPath, originalname: base, mimetype: 'text/csv', size: fs.statSync(downloadedPath).size });
           } catch (bErr) {
-            console.warn('Backup failed for', base, bErr);
+            console.warn('Backup of original CSV failed for', base, bErr);
           }
 
           // read processed JSON
@@ -122,6 +144,7 @@ export async function startCollector() {
               console.log('Saved batch to DB', saved.id);
               const marker = path.join(PROCESSED_DIR, base + '.done');
               fs.writeFileSync(marker, new Date().toISOString());
+              processedFiles.add(base);
             } catch (dberr) {
               console.error('Failed to save batch to DB', dberr);
             }
@@ -132,6 +155,7 @@ export async function startCollector() {
               console.log('Ingested', base, (resp as any).status);
               const marker = path.join(PROCESSED_DIR, base + '.done');
               fs.writeFileSync(marker, new Date().toISOString());
+                processedFiles.add(base);
             } catch (sendErr) {
               console.error('Failed to POST processed batch for', base, sendErr);
             }

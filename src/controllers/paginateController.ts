@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import parserService from '../services/parserService';
+import { getRowsPaginated, getBatchesPaginated, initDb } from '../services/dbService';
 
 const processedDir = path.resolve(__dirname, '..', '..', 'processed');
 
@@ -20,6 +21,19 @@ export default {
       const page = Math.max(1, Number(req.query.page || 1));
       const qtdPag = Math.max(1, Number(req.query.qtdPag || 300));
       const file = req.query.file as string | undefined;
+      const batchId = req.query.batchId ? Number(req.query.batchId) : null;
+
+      // If DATABASE_PATH configured, serve rows from DB with pagination
+      if (process.env.DATABASE_PATH) {
+        try {
+          await initDb();
+          const out = await getRowsPaginated(batchId, page, qtdPag);
+          return res.json(out);
+        } catch (dberr) {
+          // fallback to file-based if DB fails
+          console.error('DB pagination failed, falling back to file-based', dberr);
+        }
+      }
 
       let processedPath: string | null = null;
 
