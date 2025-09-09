@@ -1,8 +1,12 @@
-const { Client, FileType } = require('basic-ftp');
-const path = require('path');
+import { Client, FileType } from 'basic-ftp';
+import * as path from 'path';
 
-class IHMService {
-  constructor(IP, user, password) {
+export default class IHMService {
+  IP: string;
+  user: string;
+  password: string;
+  client: Client;
+  constructor(IP: string, user: string, password: string) {
     this.IP = IP;
     this.user = user;
     this.password = password;
@@ -10,22 +14,19 @@ class IHMService {
     this.client.ftp.verbose = true;
   }
 
-  async getArc(localDir) {
+  async getArc(localDir: string) {
     const remoteDir = 'InternalStorage/data/relatorios';
     try {
       await this.client.access({ host: this.IP, user: this.user, password: this.password });
       console.log(`Navegando para o diretório remoto: ${remoteDir}`);
       await this.client.cd(remoteDir);
-
       const fileList = await this.client.list();
       console.log('Arquivos encontrados:', fileList.map(f => f.name));
-
       const csvFiles = fileList.filter(item => item.type === FileType.File && item.name.toLowerCase().endsWith('.csv'));
       if (csvFiles.length === 0) {
         console.error('Nenhum arquivo .csv encontrado no diretório remoto.');
         return null;
       }
-
       for (const file of csvFiles) {
         try {
           file.modifiedAt = await this.client.lastMod(file.name);
@@ -34,17 +35,21 @@ class IHMService {
           file.modifiedAt = new Date(0);
         }
       }
-
-      csvFiles.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
-      const selectedFile = csvFiles[0].name;
+        // ensure modifiedAt exists
+        const filtered = csvFiles.filter(f => f.modifiedAt instanceof Date);
+        filtered.sort((a, b) => (b.modifiedAt!.getTime() - a.modifiedAt!.getTime()));
+        const selected = filtered[0];
+        if (!selected) {
+          console.error('Nenhum arquivo com data disponível');
+          return null;
+        }
+        const selectedFile = selected.name;
       const localPath = path.join(localDir, selectedFile);
-
       console.log(`Baixando o arquivo mais recente: ${selectedFile}`);
       await this.client.downloadTo(localPath, selectedFile);
       console.log(`Arquivo ${selectedFile} baixado com sucesso!`);
-
       return { success: true, file: selectedFile, localPath };
-    } catch (error) {
+    } catch (error: any) {
       if (error.code === 'ETIMEDOUT') {
         console.error('Erro: Conexão com o servidor FTP expirou (timeout).');
         throw new Error('Não foi possível conectar ao servidor FTP: tempo esgotado.');
@@ -60,12 +65,12 @@ class IHMService {
     }
   }
 
-  async getDir(local, remote) {
+  async getDir(local: string, remote: string) {
     try {
       await this.client.access({ host: this.IP, user: this.user, password: this.password });
       await this.client.downloadToDir(local, remote);
       return { success: true };
-    } catch (error) {
+    } catch (error: any) {
       if (error.code === 'ETIMEDOUT') {
         console.error('Erro: Conexão com o servidor FTP expirou (timeout).');
         throw new Error('Timeout de conexão FTP.');
@@ -78,5 +83,3 @@ class IHMService {
     }
   }
 }
-
-module.exports = IHMService;

@@ -1,30 +1,25 @@
-const fs = require('fs');
-const csv = require('fast-csv');
+import * as fs from 'fs';
+import { parse } from 'fast-csv';
+import { Readable } from 'stream';
 
-// parse CSV from buffer or file path
-exports.processCSV = (input) => {
+export async function processCSV(input: any) {
   return new Promise((resolve, reject) => {
-    const rows = [];
-
-    const onData = (row) => rows.push(row);
+    const rows: any[] = [];
+    const onData = (row: any) => rows.push(row);
     const onEnd = () => resolve({ message: 'CSV parsed', rowsCount: rows.length, rows });
-    const onError = (err) => reject(err);
+    const onError = (err: unknown) => reject(err);
 
     if (input && input.buffer) {
-      // from buffer
-      const stream = fs.createReadStream(null, { fd: null });
-      // fast-csv can parse from stream; create a stream from buffer using Readable
-      const { Readable } = require('stream');
       const r = new Readable();
       r.push(input.buffer);
       r.push(null);
-      r.pipe(csv.parse({ headers: true }))
+      r.pipe(parse({ headers: true }))
         .on('error', onError)
         .on('data', onData)
         .on('end', onEnd);
     } else if (input && input.path) {
       fs.createReadStream(input.path)
-        .pipe(csv.parse({ headers: true }))
+        .pipe(parse({ headers: true }))
         .on('error', onError)
         .on('data', onData)
         .on('end', onEnd);
@@ -32,4 +27,6 @@ exports.processCSV = (input) => {
       reject(new Error('Invalid input for CSV parsing'));
     }
   });
-};
+}
+
+export default { processCSV };
