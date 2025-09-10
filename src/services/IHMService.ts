@@ -48,6 +48,7 @@ export default class IHMService {
     // 3) If name contains _SYS (any case) => backup (exclude)
     // 4) Otherwise fall back to compiled patterns
     const lower = name.toLowerCase();
+    // files that explicitly end with _01.csv are always included
     if (/_01\.csv$/i.test(lower)) {
       this.memoizedExcluded.set(name, false);
       return false;
@@ -94,23 +95,14 @@ export default class IHMService {
         console.error('Nenhum arquivo .csv encontrado no diretório remoto.');
         return null;
       }
-      for (const file of csvFiles) {
-        try {
-          file.modifiedAt = await this.client.lastMod(file.name);
-        } catch (err) {
-          console.warn(`Não foi possível obter data de modificação para ${file.name}`);
-          file.modifiedAt = new Date(0);
-        }
-      }
-        // ensure modifiedAt exists
-        const filtered = csvFiles.filter(f => f.modifiedAt instanceof Date);
-        filtered.sort((a, b) => (b.modifiedAt!.getTime() - a.modifiedAt!.getTime()));
-        const selected = filtered[0];
-        if (!selected) {
-          console.error('Nenhum arquivo com data disponível');
-          return null;
-        }
-        const selectedFile = selected.name;
+  // Do not rely on remote MDTM; choose a file deterministically (by name descending)
+  csvFiles.sort((a, b) => b.name.localeCompare(a.name));
+  const selected = csvFiles[0];
+  if (!selected) {
+    console.error('Nenhum arquivo selecionado para download.');
+    return null;
+  }
+  const selectedFile = selected.name;
       const localPath = path.join(localDir, selectedFile);
       console.log(`Baixando o arquivo mais recente: ${selectedFile}`);
       await this.client.downloadTo(localPath, selectedFile);
@@ -127,6 +119,49 @@ export default class IHMService {
         console.error('Erro ao baixar arquivo:', error);
         throw new Error('Erro inesperado ao baixar arquivo.');
       }
+    } finally {
+      this.client.close();
+    }
+  }
+
+  /**
+   * Find remote CSVs that appear to be new according to multiple heuristics
+   * (name patterns, MDTM if available, and size changes) and download them to
+   * the provided localDir. Returns an array of downloaded file info.
+   *
+   * processedSet (optional) is a Set<string> of base filenames already processed
+   * so we can avoid downloading them again.
+   */
+  async findAndDownloadNewFiles(localDir: string, processedSet?: Set<string>) {
+    const remoteDir = '/InternalStorage/data/';
+    const downloaded: Array<{ name: string; localPath: string }> = [];
+    try {
+      await this.client.access({ host: this.IP, user: this.user, password: this.password });
+      await this.client.cd(remoteDir);
+      const fileList = await this.client.list();
+      let csvFiles = fileList.filter(item => item.type === FileType.File && item.name.toLowerCase().endsWith('.csv'));
+      // filter out system backups according to patterns
+      csvFiles = csvFiles.filter(f => !IHMService.isExcludedFile(f.name));
+      // Do not rely on remote MDTM or local cache; decision about new rows will be
+      // made by the parser/collector using dates inside the CSV content.
+      // We'll download all files that are not in the processedSet.
+      csvFiles.sort((a, b) => a.name.localeCompare(b.name));
+
+      for (const file of csvFiles) {
+        const base = file.name;
+        if (processedSet && processedSet.has(base)) continue;
+        const localPath = path.join(localDir, base);
+        try {
+          await this.client.downloadTo(localPath, base);
+          downloaded.push({ name: base, localPath });
+        } catch (err) {
+          console.warn(`Failed to download ${base}`, err);
+        }
+      }
+      return downloaded;
+    } catch (error: any) {
+      // normalize error messages
+      throw new Error('Erro buscando arquivos no IHM: ' + (error && error.message ? error.message : String(error)));
     } finally {
       this.client.close();
     }
@@ -150,5 +185,3 @@ export default class IHMService {
     }
   }
 }
-// TODO: Fazer um sistema de auto busca periodica
-// TODO 

@@ -9,10 +9,10 @@ export class Row {
   @ManyToOne(() => Batch as any, (b: any) => b.rows)
   batch!: Batch;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   datetime!: Date | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   label!: string | null;
 
   @Column({ type: 'int', nullable: true })

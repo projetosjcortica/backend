@@ -1,69 +1,100 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
-import { Batch } from '../entities/Batch';
-import { Row } from '../entities/Row';
+import { Relatorio } from '../entities/Relatorio';
+import BaseService from './BaseService';
 
+const useMysql = (process.env.DATABASE_TYPE === 'mysql') || !!process.env.MYSQL_HOST;
 const DB_PATH = process.env.DATABASE_PATH || 'data.sqlite';
 
-export const AppDataSource = new DataSource({
-  type: 'sqlite',
-  database: DB_PATH,
-  synchronize: true,
-  logging: false,
-  entities: [Batch, Row],
-});
+class DBService extends BaseService {
+  public ds: DataSource;
 
-export async function initDb() {
-  if (!AppDataSource.isInitialized) {
-    await AppDataSource.initialize();
+  constructor() {
+    super('DBService');
+    this.ds = useMysql
+      ? new DataSource({
+          type: 'mysql',
+          host: process.env.MYSQL_HOST || 'localhost',
+          port: Number(process.env.MYSQL_PORT || 3306),
+          username: process.env.MYSQL_USER || process.env.DB_USER || 'root',
+          password: process.env.MYSQL_PASS || process.env.DB_PASS || 'root',
+          database: process.env.MYSQL_DATABASE || process.env.DB_NAME || 'cadastro',
+          synchronize: true,
+          logging: false,
+          entities: [Relatorio],
+        })
+      : new DataSource({
+          type: 'sqlite',
+          database: DB_PATH,
+          synchronize: true,
+          logging: false,
+          entities: [Relatorio],
+        });
+  }
+
+  async init(): Promise<void> {
+    if (!this.ds.isInitialized) await this.ds.initialize();
+  }
+
+  async destroy(): Promise<void> {
+    if (this.ds.isInitialized) await this.ds.destroy();
+  }
+
+  async insertRelatorioRows(rows: any[], processedFile: string) {
+    await this.init();
+    const repo = this.ds.getRepository(Relatorio);
+    const entities = rows.map(r => {
+      const base: any = {
+        Dia: r.Dia || r.date || null,
+        Hora: r.Hora || r.time || null,
+        Nome: r.Nome || r.label || null,
+        Form1: r.Form1 != null ? Number(r.Form1) : null,
+        Form2: r.Form2 != null ? Number(r.Form2) : null,
+        processedFile,
+      };
+      for (let i = 1; i <= 40; i++) {
+        const key = `Prod_${i}`;
+        base[key] = r[key] != null ? Number(r[key]) : null;
+      }
+      return base as any;
+    });
+    return repo.save(entities as any[]);
+  }
+
+  async countRelatorioByFile(processedFile: string) {
+    await this.init();
+    const repo = this.ds.getRepository(Relatorio);
+    return repo.count({ where: { processedFile } });
+  }
+
+  async getLastRelatorioTimestamp(processedFile: string) {
+    await this.init();
+    const repo = this.ds.getRepository(Relatorio);
+    const qb = repo.createQueryBuilder('r').where('r.processedFile = :f', { f: processedFile }).orderBy('r.Dia', 'DESC').addOrderBy('r.Hora', 'DESC').limit(1);
+    const found = await qb.getOne();
+    if (!found) return null;
+    return { Dia: found.Dia || null, Hora: found.Hora || null };
+  }
+
+  async deleteRelatorioByFile(processedFile: string) {
+    await this.init();
+    const repo = this.ds.getRepository(Relatorio);
+    const items = await repo.find({ where: { processedFile } });
+    if (items.length === 0) return 0;
+    const ids = items.map((i: any) => i.id);
+    await repo.delete(ids);
+    return ids.length;
   }
 }
 
-export async function saveBatch(batchPayload: any) {
-  await initDb();
-  const repo = AppDataSource.getRepository(Batch);
-  const rowRepo = AppDataSource.getRepository(Row);
+const dbService = new DBService();
 
-  const batch = repo.create({
-    source: batchPayload.source || 'collector',
-    fileName: batchPayload.sourceName || batchPayload.fileName || 'unknown',
-    fileTimestamp: batchPayload.fileTimestamp ? new Date(batchPayload.fileTimestamp) : null,
-    rowCount: (batchPayload.rows && batchPayload.rows.length) || 0,
-    meta: batchPayload.meta || {},
-  });
-
-  const saved = await repo.save(batch);
-
-  if (batchPayload.rows && Array.isArray(batchPayload.rows)) {
-    const rows = batchPayload.rows.map((r: any) => rowRepo.create({
-      batch: saved,
-      datetime: r.datetime ? new Date(r.datetime) : null,
-      label: r.label || null,
-      group: r.group || null,
-      flag: r.flag || null,
-      values: r.values || null,
-    }));
-    await rowRepo.save(rows);
-  }
-
-  return saved;
-}
-
-export async function getBatchesPaginated(page = 1, pageSize = 50) {
-  await initDb();
-  const repo = AppDataSource.getRepository(Batch);
-  const [items, total] = await repo.findAndCount({ order: { id: 'DESC' }, skip: (page - 1) * pageSize, take: pageSize });
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  return { page, pageSize, total, totalPages, items };
-}
-
-export async function getRowsPaginated(batchId: number | null, page = 1, pageSize = 300) {
-  await initDb();
-  const repo = AppDataSource.getRepository(Row);
-  const qb = repo.createQueryBuilder('row').leftJoinAndSelect('row.batch', 'batch');
-  if (batchId) qb.where('batch.id = :id', { id: batchId });
-  qb.orderBy('row.id', 'ASC').skip((page - 1) * pageSize).take(pageSize);
-  const [items, total] = await qb.getManyAndCount();
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  return { page, pageSize, total, totalPages, items };
-}
+// backward-compatible exports (functions)
+export const AppDataSource = dbService.ds;
+export async function initDb() { return dbService.init(); }
+export async function insertRelatorioRows(rows: any[], processedFile: string) { return dbService.insertRelatorioRows(rows, processedFile); }
+export async function countRelatorioByFile(processedFile: string) { return dbService.countRelatorioByFile(processedFile); }
+export async function getLastRelatorioTimestamp(processedFile: string) { return dbService.getLastRelatorioTimestamp(processedFile); }
+export async function deleteRelatorioByFile(processedFile: string) { return dbService.deleteRelatorioByFile(processedFile); }
+export function isMysqlConfigured() { return useMysql; }
+export { dbService as default };

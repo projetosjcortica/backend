@@ -12,7 +12,7 @@ export class Batch {
   @Column()
   fileName!: string;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   fileTimestamp!: Date | null;
 
   @Column({ type: 'int', default: 0 })

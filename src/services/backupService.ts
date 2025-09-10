@@ -2,19 +2,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const backupDir = path.resolve(__dirname, '..', '..', 'backups');
-const workDir = path.resolve(__dirname, '..', '..', 'work');
+const downloadsDir = path.resolve(__dirname, '..', '..', 'downloads');
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
-if (!fs.existsSync(workDir)) fs.mkdirSync(workDir, { recursive: true });
+if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 
 class BackupService {
   dir: string;
-  work: string;
+  downloads: string;
   // simple in-memory cache for listing metadata
   private metaCache: Map<string, any> = new Map();
 
-  constructor(dir = backupDir, work = workDir) {
+  constructor(dir = backupDir, downloads = downloadsDir) {
     this.dir = dir;
-    this.work = work;
+    this.downloads = downloads;
     this._loadMetaCache();
   }
 
@@ -39,10 +39,10 @@ class BackupService {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const baseName = `${timestamp}-${file.originalname}`;
     const backupPath = path.join(this.dir, baseName);
-    const workPath = path.join(this.work, baseName);
+  const workPath = path.join(this.downloads, baseName);
     if (file.buffer) {
       fs.writeFileSync(backupPath, file.buffer);
-      fs.writeFileSync(workPath, file.buffer);
+  fs.writeFileSync(workPath, file.buffer);
     } else if (file.path) {
       fs.copyFileSync(file.path, backupPath);
       fs.copyFileSync(file.path, workPath);
@@ -76,7 +76,7 @@ class BackupService {
     const meta = this.getMeta(storedName);
     if (!meta) throw new Error('Backup not found');
     const src = meta.backupPath;
-    const dest = path.join(this.work, meta.storedName);
+  const dest = path.join(this.downloads, meta.storedName);
     fs.copyFileSync(src, dest);
     return dest;
   }

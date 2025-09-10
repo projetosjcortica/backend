@@ -30,14 +30,18 @@ app.use(logsMiddleware);
 app.get('/health', (req: Request, res: Response) => res.json({ status: 'ok' }));
 app.get('/', (req: Request, res: Response) => res.json({ message: 'Started backend server!', uptime: process.uptime() }));
 
-app.post('/upload-file', upload.single('file'), fileController.uploadFile as any);
 app.post('/ihm/fetch', express.json(), ihmController.fetchLatestFromIHM as any);
-app.get('/data', paginateController.paginate as any);
+app.get('/data', paginateController.paginate as any); // legacy
+// new RESTful relatorio endpoints
+app.get('/api/relatorio', paginateController.listRelatorio as any);
+app.get('/api/relatorio/files', paginateController.listFiles as any);
+app.get('/api/relatorio/count', paginateController.countFile as any);
+
 app.get('/batches', dbController.listBatches as any);
 app.get('/batches/:id', dbController.getBatch as any);
 
-app.use('/backups', express.static(path.join(__dirname, '..', 'backups')));
-app.use('/work', express.static(path.join(__dirname, '..', 'work')));
+// Collector is responsible for downloading CSVs and backing them up.
+// The server exposes only DB-backed endpoints; do not serve backups or downloads over HTTP.
 
 app.use(errorHandler as any);
 

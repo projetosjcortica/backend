@@ -27,7 +27,5 @@ yarn-error.log*
 debug/
 logs/
 backups/
-work/
-processed/
-tmp/
+downloads/
 types/
