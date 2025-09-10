@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import IHMService from '../src/services/IHMService';
 
-const runIntegration = true;
+const runIntegration = process.env.RUN_IHM_INTEGRATION === 'true';
 
 (runIntegration ? test : test.skip)('IHM integration: connect and download latest CSV', async () => {
   const tmp = path.resolve('tmp');

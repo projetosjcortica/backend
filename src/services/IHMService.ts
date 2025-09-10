@@ -1,5 +1,8 @@
 import { Client, FileType } from 'basic-ftp';
 import * as path from 'path';
+import * as fs from 'fs';
+import backupService from './backupService';
+import { computeHashSync } from '../utils/hash';
 
 export default class IHMService {
   IP: string;
@@ -150,6 +153,32 @@ export default class IHMService {
       for (const file of csvFiles) {
         const base = file.name;
         if (processedSet && processedSet.has(base)) continue;
+
+        // Try to get remote hash without downloading and compare with latest backup.
+        try {
+          const remote = await this.getRemoteHash(base);
+          if (remote && remote.hash) {
+            // find latest backup for this filename
+            const latest = backupService.getLatestBackup(base);
+            if (latest && latest.backupPath) {
+              const backupPath = latest.backupPath;
+              try {
+                const localHash = computeHashSync(backupPath, remote.alg === 'unknown' ? 'sha256' : (remote.alg === 'crc' ? 'sha256' : remote.alg));
+                if (localHash && localHash === remote.hash) {
+                  // identical to latest backup - skip download
+                  console.log('Remote file hash matches latest backup, skipping download:', base);
+                  continue;
+                }
+              } catch (e) {
+                // ignore and fall through to download
+                console.warn('Error comparing remote hash with backup for', base, e);
+              }
+            }
+          }
+        } catch (e) {
+          // couldn't get remote hash - fall back to download
+        }
+
         const localPath = path.join(localDir, base);
         try {
           await this.client.downloadTo(localPath, base);
@@ -165,6 +194,43 @@ export default class IHMService {
     } finally {
       this.client.close();
     }
+  }
+
+  // Try common FTP hash commands (server dependant). Returns { alg, hash } or null.
+  private async getRemoteHash(name: string): Promise<{ alg: string; hash: string } | null> {
+    const candidates: Array<{ cmd: string; alg: string }> = [
+      { cmd: 'XMD5', alg: 'md5' },
+      { cmd: 'MD5', alg: 'md5' },
+      { cmd: 'XSHA1', alg: 'sha1' },
+      { cmd: 'XCRC', alg: 'crc' },
+      { cmd: 'HASH', alg: 'unknown' },
+    ];
+    for (const c of candidates) {
+      try {
+        // send raw command; some servers reply with the hash in the message
+        // basic-ftp exposes `send` on the client. Use (this.client as any).send to avoid types.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyClient: any = this.client as any;
+        if (typeof anyClient.send !== 'function') continue;
+        const res = await anyClient.send(`${c.cmd} ${name}`);
+        if (!res) continue;
+        const txt = String(res).trim();
+        // attempt to extract hex-like token
+        const m = txt.match(/([0-9a-fA-F]{16,128})/);
+        if (m && m[1]) {
+          return { alg: c.alg, hash: m[1].toLowerCase() };
+        }
+      } catch (e) {
+        // ignore and try next
+      }
+    }
+    return null;
+  }
+
+  private computeFileHashSync(filePath: string, alg: string) {
+  // deprecated - use utils/hash.computeHashSync
+  if (!fs.existsSync(filePath)) return null as any;
+  return computeHashSync(filePath, alg === 'unknown' ? 'sha256' : (alg === 'crc' ? 'sha256' : alg));
   }
 
   async getDir(local: string, remote: string) {

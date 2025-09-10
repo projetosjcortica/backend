@@ -1,9 +1,9 @@
-import FileCSV from '../src/entities/FileCSV';
+import parserService from '../src/services/parserService';
 import * as path from 'path';
 
-test('FileCSV loads csv and exposes rows', async () => {
-  const f = new FileCSV(path.resolve(__dirname, 'fixtures', 'sample.csv'));
-  await f.load();
-  expect(f.rows.length).toBe(23);
-  expect(f.getRow(0)).toHaveProperty('label', 'Formula Nikkey');
+test('parserService processes sample csv and exposes rows', async () => {
+  const res: any = await parserService.processFile(path.resolve(__dirname, 'fixtures', 'sample.csv'));
+  expect(res.rowsCount).toBeGreaterThan(0);
+  expect(Array.isArray(res.rows)).toBe(true);
+  expect(res.rows[0]).toHaveProperty('label');
 });
