@@ -29,3 +29,5 @@ logs/
 backups/
 downloads/
 types/
+tmp/
+.github/
