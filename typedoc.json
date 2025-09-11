@@ -1,9 +1,12 @@
 {
-  "entryPoints": ["src/index.ts"],
+  "entryPoints": ["src"],
+  "entryPointStrategy": "expand",
   "out": "docs/typedoc",
   "tsconfig": "tsconfig.json",
-  "exclude": ["**/tests/**", "**/fixtures/**"],
-  "excludePrivate": true,
-  "excludeExternals": true,
-  "includeVersion": true
+  "exclude": ["**/tests/**", "**/fixtures/**", "**/*.test.*", "**/*.spec.*"],
+  "excludePrivate": false,
+  "excludeProtected": false,
+  "excludeExternals": false,
+  "includeVersion": true,
+  "hideGenerator": false
 }

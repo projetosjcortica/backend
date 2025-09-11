@@ -72,3 +72,15 @@ npm run docs
 ```
 
 A documentação será gerada em `docs/typedoc`.
+
+Observações avançadas sobre geração de docs:
+- Para incluir símbolos privados/protected na documentação, o `typedoc.json` agora tem `excludePrivate: false` e `excludeProtected: false`.
+- Se quiser gerar apenas APIs públicas, ajuste `typedoc.json` para `excludePrivate: true`.
+
+Comando alternativo (para depuração):
+
+```powershell
+npx typedoc --entryPointStrategy expand --entryPoints src --out docs/typedoc
+```
+
+Se quiser, eu rodo a geração de docs aqui e te mostro um resumo dos arquivos criados. Deseja que eu execute agora?
