@@ -4,7 +4,7 @@
   "description": "Express backend refatorado para produção",
   "main": "server.js",
   "scripts": {
-    "start": "node dist/server.js",
+    "start": "echo 'placeholder btw",
     "build": "tsc -p tsconfig.json",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "collector:dev": "ts-node-dev --respawn --transpile-only src/collector/index.ts",
