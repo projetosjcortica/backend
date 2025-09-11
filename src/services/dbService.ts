@@ -3,10 +3,15 @@ import { DataSource } from 'typeorm';
 import { Relatorio } from '../entities/Relatorio';
 import BaseService from './BaseService';
 
+// Atualizar essa flag conforme ambiente (variável de ambiente seria melhor)
 const useMysql = true;
 const DB_PATH = process.env.DATABASE_PATH || 'data.sqlite';
 const MYSQL_HOST = process.env.MYSQL_HOST || 'localhost'; // Garantir localhost como padrão
 
+/**
+ * Serviço responsável pela conexão e operações com o banco de dados.
+ * Usa TypeORM; suporta MySQL (padrão atual) ou SQLite como fallback.
+ */
 class DBService extends BaseService {
   public ds: DataSource;
 
@@ -33,14 +38,15 @@ class DBService extends BaseService {
         });
   }
 
+  /** Inicializa a conexão com o banco, se necessário. */
   async init(): Promise<void> {
     if (!this.ds.isInitialized) {
       try {
         await this.ds.initialize();
-        console.log('Database connection established successfully.');
+        console.log('Conexão com o banco estabelecida com sucesso.');
       } catch (error) {
-        console.error('Failed to connect to the database:', error);
-        throw new Error('Database connection error. Please check your configuration.');
+        console.error('Falha ao conectar ao banco de dados:', error);
+        throw new Error('Erro na conexão com o banco de dados. Verifique a configuração.');
       }
     }
   }
@@ -49,16 +55,19 @@ class DBService extends BaseService {
     if (this.ds.isInitialized) await this.ds.destroy();
   }
 
+  /**
+   * Insere várias linhas na tabela Relatorio.
+   * Aceita objetos que contenham propriedades no formato usado pelo parser/mapRow.
+   */
   async insertRelatorioRows(rows: any[], processedFile: string) {
     await this.init();
     const repo = this.ds.getRepository(Relatorio);
-    // console.log(rows);
     const entities = rows.map(r => {
       const base: any = {
         Dia: r.Dia || r.date || null,
         Hora: r.Hora || r.time || null,
         Nome: r.Nome || r.label || null,
-        // accept multiple possible property names coming from parser/mapRow
+        // aceita múltiplas variações de nomes vindas do parser/mapRow
         Form1:
           r.Form1 != null ? Number(r.Form1) : (r.form1 != null ? Number(r.form1) : (r.group != null ? Number(r.group) : null)),
         Form2:
@@ -101,15 +110,19 @@ class DBService extends BaseService {
 
   async syncSchema(): Promise<void> {
     await this.init();
-    console.log('Synchronizing database schema...');
+    console.log('Sincronizando esquema do banco...');
     await this.ds.synchronize();
-    console.log('Database schema synchronized.');
+    console.log('Esquema do banco sincronizado.');
+  }
+
+  static insertRelatorioRows(data: any, additionalData: any): void {
+    // Implementação fictícia
   }
 }
 
 const dbService = new DBService();
 
-// backward-compatible exports (functions)
+// exports compatíveis
 export const AppDataSource = dbService.ds;
 export async function initDb() { return dbService.init(); }
 export async function insertRelatorioRows(rows: any[], processedFile: string) { return dbService.insertRelatorioRows(rows, processedFile); }
@@ -117,4 +130,4 @@ export async function countRelatorioByFile(processedFile: string) { return dbSer
 export async function getLastRelatorioTimestamp(processedFile: string) { return dbService.getLastRelatorioTimestamp(processedFile); }
 export async function deleteRelatorioByFile(processedFile: string) { return dbService.deleteRelatorioByFile(processedFile); }
 export function isMysqlConfigured() { return useMysql; }
-export { dbService as default };
+export default dbService;

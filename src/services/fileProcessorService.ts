@@ -1,5 +1,5 @@
 import parserService, { ParserRow, ParserResult } from './parserService';
-import backupService from './backupService';
+import BackupService from './backupService';
 import * as db from './dbService';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -47,9 +47,12 @@ class ProcessorSubject {
   }
 }
 
+// instância única para uso interno do serviço
+const backupSvc = new BackupService();
+
 class BackupObserver implements Observer {
   async update(payload: ProcessPayload) {
-  const candidates = [path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp', payload.filename), path.resolve(process.cwd(), payload.filename)];
+    const candidates = [path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp', payload.filename), path.resolve(process.cwd(), payload.filename)];
     let found: string | null = null;
     for (const c of candidates) {
       if (fs.existsSync(c)) { found = c; break; }
@@ -57,7 +60,8 @@ class BackupObserver implements Observer {
     if (!found) return;
     const fileStat = fs.statSync(found);
     const fileObj: any = { originalname: payload.filename, path: found, mimetype: 'text/csv', size: fileStat.size };
-    await backupService.backupFile(fileObj);
+    // usa a instância real
+    await backupSvc.backupFile(fileObj);
   }
 }
 
@@ -65,7 +69,7 @@ class CleanupObserver implements Observer {
   async update(payload: ProcessPayload) {
     const cnt = await db.countRelatorioByFile(payload.filename);
     if (cnt >= payload.rowCount) {
-      const meta = backupService.listBackups().find((m: any) => m.originalName === payload.filename || m.storedName?.endsWith(payload.filename));
+      const meta = backupSvc.listBackups().find((m: any) => m.originalName === payload.filename || m.storedName?.endsWith(payload.filename));
       if (meta) {
         const local = path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp', payload.filename);
         if (fs.existsSync(local)) fs.unlinkSync(local);
@@ -74,6 +78,10 @@ class CleanupObserver implements Observer {
   }
 }
 
+/**
+ * Serviço responsável por processar arquivos CSV e gerenciar observadores.
+ * Implementa o padrão Observer para notificar eventos de processamento.
+ */
 class FileProcessorService extends BaseService {
   private subject: ProcessorSubject;
   private candidateSubject: CandidateSubject;
@@ -125,6 +133,12 @@ class FileProcessorService extends BaseService {
     return base;
   }
 
+  /**
+   * Processa um arquivo CSV, mapeia as linhas e insere no banco de dados.
+   * Notifica observadores após o processamento.
+   * @param fullPath Caminho completo do arquivo CSV a ser processado.
+   * @returns Informações sobre o processamento (caminho, contagem de linhas, etc.).
+   */
   async processFile(fullPath: string) {
     const parsed: ParserResult = await parserService.processFile(fullPath as any);
     const rows: ParserRow[] = Array.isArray(parsed.rows) ? parsed.rows : [];
@@ -165,7 +179,11 @@ class FileProcessorService extends BaseService {
     return { processedPath: fullPath, rowsCount: mapped.length, insertedCount: Array.isArray(inserted) ? inserted.length : null };
   }
 
-  // CandidateObserver implementation: by default filter out files already present in DB
+  /**
+   * Atualiza a lista de candidatos a serem processados, filtrando duplicados.
+   * @param candidates Lista de candidatos com nome e tamanho.
+   * @returns Lista filtrada de candidatos.
+   */
   async updateCandidates(candidates: Array<{ name: string; size: number }>) {
     const out: Array<{ name: string; size: number }> = [];
     for (const c of candidates) {
@@ -192,10 +210,30 @@ class FileProcessorService extends BaseService {
     return candidates;
   }
 
-  attachObserver(o: Observer) { this.subject.attach(o); }
-  detachObserver(o: Observer) { this.subject.detach(o); }
+  /**
+   * Anexa um novo observador para eventos de processamento.
+   * @param o Observador a ser anexado.
+   */
+  attachObserver(o: Observer) {
+    this.subject.attach(o);
+  }
+
+  /**
+   * Remove um observador de eventos de processamento.
+   * @param o Observador a ser removido.
+   */
+  detachObserver(o: Observer) {
+    this.subject.detach(o);
+  }
+
+  static process(file: any): any {
+    // Compatibilidade: delega para uma instância do serviço
+    const svc = new FileProcessorService();
+    const fullPath = file && typeof file === 'object' ? (file.localPath || file.path || String(file)) : String(file);
+    return svc.processFile(fullPath as string);
+  }
 }
 
-const fileProcessorService = new FileProcessorService();
-export default fileProcessorService;
+const fileProcessor = new FileProcessorService();
+export default fileProcessor;
 export { FileProcessorService };

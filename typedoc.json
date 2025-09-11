@@ -1,0 +1,9 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/typedoc",
+  "tsconfig": "tsconfig.json",
+  "exclude": ["**/tests/**", "**/fixtures/**"],
+  "excludePrivate": true,
+  "excludeExternals": true,
+  "includeVersion": true
+}

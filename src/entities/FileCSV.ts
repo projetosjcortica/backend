@@ -1,9 +1,16 @@
 import * as fs from 'fs';
 import parserService from '../services/parserService';
 
+/**
+ * Classe auxiliar para representar e consultar um CSV carregado.
+ * Fornece métodos úteis para acessar linhas por rótulo e iterar sobre linhas.
+ */
 export default class FileCSV {
+  /** Caminho do arquivo CSV (se definido) */
   filePath: string | null = null;
+  /** Linhas normalizadas carregadas do CSV */
   rows: any[] = [];
+  /** Cabeçalhos detectados (se houver) */
   headers: string[] | null = null;
   // index by label for O(1) lookups
   private indexByLabel: Map<string, any[]> = new Map();
@@ -12,6 +19,10 @@ export default class FileCSV {
     if (filePath) this.filePath = filePath;
   }
 
+  /**
+   * Carrega e normaliza o CSV usando `parserService`.
+   * Retorna um objeto com o número de linhas lidas.
+   */
   async load() {
     if (!this.filePath) throw new Error('filePath not set');
     this.rows = [];
@@ -32,10 +43,12 @@ export default class FileCSV {
     return { rows: this.rows.length };
   }
 
+  /** Serialização para JSON (útil em logs ou respostas) */
   toJSON() {
     return { headers: this.headers, rows: this.rows };
   }
 
+  /** Retorna a linha no índice informado ou null */
   getRow(i: number) {
     return this.rows[i] || null;
   }
@@ -51,12 +64,12 @@ export default class FileCSV {
     }
   }
 
-  // Return all rows with the exact label (fast O(1) lookup via Map)
+  /** Retorna todas as linhas com o rótulo exato fornecido */
   findByLabel(label: string) {
     return this.indexByLabel.get(label) || [];
   }
 
-  // Find the first row where label starts with prefix
+  /** Procura a primeira linha cujo rótulo começa com o prefixo informado */
   findFirstLabelLike(prefix: string) {
     for (const [label, arr] of this.indexByLabel.entries()) {
       if (label && label.startsWith(prefix)) return arr[0];
@@ -64,6 +77,7 @@ export default class FileCSV {
     return null;
   }
 
+  /** Mapeia as linhas usando a função fornecida */
   mapRows(fn: (row: any, idx: number) => any) {
     return this.rows.map(fn);
   }

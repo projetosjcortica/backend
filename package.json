@@ -10,7 +10,8 @@
     "collector:dev": "ts-node-dev --respawn --transpile-only src/collector/index.ts",
     "collector:start": "node dist/collector/index.js",
     "lint": "eslint . || true",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "docs": "npx typedoc --options typedoc.json"
   },
   "repository": {
     "type": "git",
@@ -56,6 +57,7 @@
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0",
+    "typedoc": "^0.28.12",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.43.0"
   }

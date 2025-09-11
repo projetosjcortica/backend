@@ -1,4 +1,4 @@
- # Coletor IHM CSV (Backend)
+# Coletor IHM CSV (Backend)
 
  Este projeto coleta arquivos CSV de um equipamento IHM via FTP, processa-os para uma forma JSON normalizada, armazena os arquivos originais em backup e persiste registros na tabela `Relatorio` utilizando TypeORM. Além disso, expõe uma API Express para consultar dados e permitir upload manual de arquivos.
 
@@ -59,3 +59,16 @@
 
  - Siga o estilo do repositório (TypeScript com tipagem forte).
  - Prefira alterações pequenas e reversíveis e adicione testes unitários para novos comportamentos.
+
+## Gerar documentação com TypeDoc
+
+Este projeto contém código TypeScript. Para gerar documentação que respeite tipagem e comentários TSDoc, use o `TypeDoc`.
+
+Instale (se necessário) e gere a documentação:
+
+```powershell
+npm install --save-dev typedoc
+npm run docs
+```
+
+A documentação será gerada em `docs/typedoc`.

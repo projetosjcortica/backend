@@ -1,24 +1,33 @@
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
+/**
+ * Entidade Relatorio - representa uma linha de relatório extraída do CSV.
+ * Campos Prod_1..Prod_40 mapeiam valores numéricos variáveis do CSV.
+ */
 @Entity({ name: 'relatorio' })
 export class Relatorio {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  /** Dia no formato string (ex: '2025-09-11') */
   @Column({ type: 'varchar', length: 10, nullable: true })
   Dia!: string | null;
 
+  /** Hora no formato HH:MM:SS */
   @Column({ type: 'time', nullable: true })
   Hora!: string | null;
 
+  /** Nome/etiqueta da linha */
   @Column({ type: 'varchar', length: 30, nullable: true })
   Nome!: string | null;
 
+  /** Formulário 1 (valor numérico) */
   @Column({ type: 'int', nullable: true })
-  Form1!: number;
+  Form1!: number | null;
 
+  /** Formulário 2 (valor numérico) */
   @Column({ type: 'int', nullable: true })
-  Form2!: number;
+  Form2!: number | null;
 
   // Prod_1 .. Prod_40
   @Column({ type: 'int', nullable: true })
@@ -102,6 +111,7 @@ export class Relatorio {
   @Column({ type: 'int', nullable: true })
   Prod_40!: number | null;
 
+  /** Nome do arquivo que gerou esta linha (útil para auditoria) */
   @Column({ type: 'varchar', length: 255, nullable: true })
   processedFile!: string | null;
 }

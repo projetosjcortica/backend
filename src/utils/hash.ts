@@ -11,7 +11,7 @@ export function computeHashSync(filePath: string, alg = 'sha256') {
   if (!fs.existsSync(filePath)) return null; // Verifica se o arquivo existe
   const buf = fs.readFileSync(filePath); // Lê o conteúdo do arquivo
   const h = crypto.createHash(alg); // Cria um objeto de hash com o algoritmo especificado
-  h.update(buf); // Atualiza o hash com o conteúdo do arquivo
+  h.update(buf); // Atualiza o hashw com o conteúdo do arquivo
   return h.digest('hex'); // Retorna o hash em formato hexadecimal
 }
 

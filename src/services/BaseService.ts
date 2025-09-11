@@ -1,16 +1,25 @@
+/**
+ * Serviço base abstrato com hooks de ciclo de vida.
+ * Fornece um ponto comum para inicialização e finalização de serviços.
+ */
 export default abstract class BaseService {
   name: string;
   constructor(name: string) {
     this.name = name;
   }
 
-  // optional lifecycle hook for services
+  /**
+   * Hook opcional executado na inicialização do serviço.
+   * Subclasses podem sobrescrever para executar startup async.
+   */
   async init(): Promise<void> {
-    // noop by default
+    // noop por padrão
   }
 
-  // optional shutdown
+  /**
+   * Hook opcional executado no desligamento do serviço.
+   */
   async shutdown(): Promise<void> {
-    // noop by default
+    // noop por padrão
   }
 }

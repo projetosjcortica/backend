@@ -1,5 +1,9 @@
+/**
+ * Controller com helpers para paginação e endpoints legados relacionados à tabela `relatorio`.
+ */
+
 import { Request, Response, NextFunction } from 'express';
-import { AppDataSource, initDb, countRelatorioByFile } from '../services/dbService';
+import { AppDataSource, initDb } from '../services/dbService';
 import { Relatorio } from '../entities/Relatorio';
 
 /**
@@ -20,8 +24,8 @@ async function queryDbRows(page: number, pageSize: number) {
   const rows = items.map((it: any) => {
     const values: Array<number | null> = [];
     for (let i = 1; i <= 40; i++) {
-      const k = `Prod_${i}`;
-      values.push(it[k] != null ? Number(it[k]) : null);
+      const v = (it as any)[`Prod_${i}`];
+      values.push(v == null ? null : Number(v));
     }
     return {
       Dia: it.Dia || null,
@@ -30,33 +34,28 @@ async function queryDbRows(page: number, pageSize: number) {
       Form1: it.Form1 != null ? Number(it.Form1) : null,
       Form2: it.Form2 != null ? Number(it.Form2) : null,
       values,
-      processedFile: it.processedFile || null,
+      processedFile: (it as any).processedFile || null,
     };
   });
 
   return { rows, total }; // Return the mapped rows and total record count
 }
 
-export default {
+// Controlador para paginação de dados
+const paginateController = {
   /**
    * Legacy endpoint to fetch paginated data from the database.
    * @route GET /data
-   * @param {Request} req - The Express request object.
-   * @param {Response} res - The Express response object.
-   * @param {NextFunction} next - The next middleware function.
    */
   paginate: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const page = Math.max(1, Number(req.query.page || 1)); // Determine the current page
-      const pageSize = Math.max(1, Number(req.query.qtdPag || req.query.pageSize || 300)); // Determine the page size
+      const pageSize = Math.max(1, Number(req.query.qtdPag || (req.query.pageSize as any) || 300)); // Determine the page size
       try {
-        const dbResult = await queryDbRows(page, pageSize); // Query the database
-        const total = dbResult.total;
-        const totalPages = Math.max(1, Math.ceil(total / pageSize)); // Calculate total pages
-        return res.json({ page, pageSize, total, totalPages, data: dbResult.rows }); // Return paginated data
+        const { rows, total } = await queryDbRows(page, pageSize);
+        res.json({ page, pageSize, rows, total });
       } catch (e) {
-        const detail = e instanceof Error ? e.message : String(e);
-        return res.status(503).json({ error: 'Database not available', detail }); // Return error if the database is unavailable
+        next(e);
       }
     } catch (err) {
       next(err); // Pass the error to the error-handling middleware
@@ -66,33 +65,21 @@ export default {
   /**
    * Fetch paginated relatorio data.
    * @route GET /api/relatorio
-   * @param {Request} req - The Express request object.
-   * @param {Response} res - The Express response object.
-   * @param {NextFunction} next - The next middleware function.
    */
   listRelatorio: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const page = Math.max(1, Number(req.query.page || 1)); // Determine the current page
-      const pageSize = Math.max(1, Number(req.query.pageSize || 300)); // Determine the page size
-      try {
-        const dbResult = await queryDbRows(page, pageSize); // Query the database
-        const total = dbResult.total;
-        const totalPages = Math.max(1, Math.ceil(total / pageSize)); // Calculate total pages
-        return res.json({ page, pageSize, total, totalPages, data: dbResult.rows }); // Return paginated data
-      } catch (e) {
-        const detail = e instanceof Error ? e.message : String(e);
-        return res.status(503).json({ error: 'Database not available', detail }); // Return error if the database is unavailable
-      }
+      const page = Math.max(1, Number(req.query.page || 1));
+      const pageSize = Math.max(1, Number(req.query.pageSize || 50));
+      const { rows, total } = await queryDbRows(page, pageSize);
+      res.json({ page, pageSize, rows, total });
     } catch (err) {
-      next(err); // Pass the error to the error-handling middleware
+      next(err);
     }
   },
 
   /**
    * List distinct processedFile values from the database (currently disabled).
    * @route GET /api/relatorio/files
-   * @param {Request} _req - The Express request object (unused).
-   * @param {Response} res - The Express response object.
    */
   listFiles: async (_req: Request, res: Response) => {
     // This endpoint is disabled and returns an empty list
@@ -102,18 +89,17 @@ export default {
   /**
    * Count the total number of rows in the relatorio table.
    * @route GET /api/relatorio/count
-   * @param {Request} _req - The Express request object (unused).
-   * @param {Response} res - The Express response object.
-   * @param {NextFunction} next - The next middleware function.
    */
   countFile: async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      await initDb(); // Initialize the database connection
-      const repo = AppDataSource.getRepository(Relatorio); // Get the repository for the Relatorio entity
-      const total = await repo.count(); // Count the total records in the table
-      res.json({ count: total }); // Return the total count
+      await initDb();
+      const repo = AppDataSource.getRepository(Relatorio);
+      const count = await repo.count();
+      res.json({ count });
     } catch (err) {
-      next(err); // Pass the error to the error-handling middleware
+      next(err);
     }
   }
 };
+
+export default paginateController;

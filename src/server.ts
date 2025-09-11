@@ -1,3 +1,8 @@
+/**
+ * Inicialização do servidor Express e registro das rotas principais.
+ * Contém apenas endpoints essenciais e middlewares de segurança/erro.
+ */
+
 import { config as dotenvConfig } from 'dotenv';
 dotenvConfig();
 import express, { Request, Response } from 'express';
@@ -5,35 +10,48 @@ import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
 
-import logsMiddleware from './middleware/logs';
 import errorHandler from './middleware/errorHandler';
+import logs from './middleware/logs';
+import dbController from './controllers/dbController';
+import fileController from './controllers/fileController';
 import ihmController from './controllers/ihmController';
 import paginateController from './controllers/paginateController';
 
+// Cria a aplicação Express
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT || 3000);
 
+// Middlewares de segurança, parsing e logs
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(morgan('combined'));
-app.use(logsMiddleware);
+app.use(logs);
 
-// Health check endpoint
+// Health check simples para monitoramento
 app.get('/health', (req: Request, res: Response) => res.json({ status: 'ok' }));
 
-// IHM-related endpoints
-app.post('/ihm/fetch', express.json(), ihmController.fetchLatestFromIHM as any);
+// Root endpoint usado pelos testes
+app.get('/', (_req: Request, res: Response) => res.json({ message: 'ok' }));
 
-// Relatório endpoints
-app.get('/api/relatorio', paginateController.listRelatorio as any);
-app.get('/api/relatorio/count', paginateController.countFile as any);
+// Rotas principais (mapeamento explícito para funções dos controllers)
+app.get('/api/db/batches', dbController.listBatches);
+app.post('/api/files/upload', fileController.uploadFile);
+app.post('/api/ihm/fetch', ihmController.fetchLatestFromIHM);
+app.get('/api/ihm/list', ihmController.list);
+app.get('/api/relatorio', paginateController.paginate);
+app.get('/api/relatorio/files', paginateController.listFiles);
+app.get('/api/relatorio/count', paginateController.countFile);
 
-// Error handling middleware
+// Middleware de tratamento de erros (sempre por último)
 app.use(errorHandler);
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+// Inicia o servidor quando este arquivo for executado diretamente
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Servidor rodando na porta ${port}`);
+  });
+}
 
+// Exportação da aplicação para testes ou uso externo
 export default app;
