@@ -20,6 +20,8 @@ export default class IHMService {
   // Cached compiled patterns and memoization map for quick lookup
   private static compiledPatterns: RegExp[] | null = null;
   private static memoizedExcluded: Map<string, boolean> = new Map();
+  // In-memory cache storing remote file info (size, hash)
+  private static fileCache: Map<string, { size: number; hash?: string }> = new Map();
 
   // Programmatically set override patterns (useful for tests)
   static setExcludePatterns(rawPatterns: string | null) {
@@ -154,34 +156,50 @@ export default class IHMService {
         const base = file.name;
         if (processedSet && processedSet.has(base)) continue;
 
-        // Try to get remote hash without downloading and compare with latest backup.
+        // Try to get remote size (bytes) before downloading; if available and matches cache, skip download
+        let remoteSize: number | null = null;
         try {
-          const remote = await this.getRemoteHash(base);
-          if (remote && remote.hash) {
-            // find latest backup for this filename
-            const latest = backupService.getLatestBackup(base);
-            if (latest && latest.backupPath) {
-              const backupPath = latest.backupPath;
-              try {
-                const localHash = computeHashSync(backupPath, remote.alg === 'unknown' ? 'sha256' : (remote.alg === 'crc' ? 'sha256' : remote.alg));
-                if (localHash && localHash === remote.hash) {
-                  // identical to latest backup - skip download
-                  console.log('Remote file hash matches latest backup, skipping download:', base);
-                  continue;
-                }
-              } catch (e) {
-                // ignore and fall through to download
-                console.warn('Error comparing remote hash with backup for', base, e);
-              }
+          // basic-ftp provides size(name)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (typeof (this.client as any).size === 'function') {
+            // some servers may reject SIZE; wrap in try/catch
+            try {
+              const s = await (this.client as any).size(base);
+              remoteSize = typeof s === 'number' ? s : Number(s || 0);
+            } catch (e) {
+              remoteSize = null;
             }
           }
         } catch (e) {
-          // couldn't get remote hash - fall back to download
+          remoteSize = null;
+        }
+
+        const cached = IHMService.fileCache.get(base);
+        if (remoteSize != null && cached && cached.size === remoteSize) {
+          // Remote file size equals cached size -> assume identical, skip download
+          console.log('Remote file size matches cache, skipping download:', base);
+          continue;
         }
 
         const localPath = path.join(localDir, base);
         try {
           await this.client.downloadTo(localPath, base);
+          // compute hash and update in-memory cache
+          try {
+            const hash = computeHashSync(localPath, 'sha256');
+            const finalSize = remoteSize != null ? remoteSize : (fs.existsSync(localPath) ? fs.statSync(localPath).size : 0);
+            if (hash && typeof hash === 'string') {
+              IHMService.fileCache.set(base, { size: finalSize, hash });
+            } else {
+              IHMService.fileCache.set(base, { size: finalSize });
+            }
+          } catch (hErr) {
+            // if hashing fails, still store size
+            try {
+              const finalSize = fs.existsSync(localPath) ? fs.statSync(localPath).size : (remoteSize != null ? remoteSize : 0);
+              IHMService.fileCache.set(base, { size: finalSize });
+            } catch (e) { /* ignore */ }
+          }
           downloaded.push({ name: base, localPath });
         } catch (err) {
           console.warn(`Failed to download ${base}`, err);
@@ -191,6 +209,117 @@ export default class IHMService {
     } catch (error: any) {
       // normalize error messages
       throw new Error('Erro buscando arquivos no IHM: ' + (error && error.message ? error.message : String(error)));
+    } finally {
+      this.client.close();
+    }
+  }
+
+  /**
+   * List candidate CSV files that likely need to be downloaded/processed.
+   * Uses the FTP LIST response (ls -l) to obtain remote sizes and compares
+   * against the in-memory cache to decide if a file changed.
+   */
+  async listCandidateFiles(processedSet?: Set<string>) {
+    const remoteDir = '/InternalStorage/data/';
+    try {
+      await this.client.access({ host: this.IP, user: this.user, password: this.password });
+      await this.client.cd(remoteDir);
+      const fileList = await this.client.list();
+      let csvFiles = fileList.filter(item => item.type === FileType.File && item.name.toLowerCase().endsWith('.csv'));
+      csvFiles = csvFiles.filter(f => !IHMService.isExcludedFile(f.name));
+      const candidatesAll: Array<{ name: string; size: number; modifiedAtTs: number }> = [];
+      for (const f of csvFiles) {
+        const base = f.name;
+        if (processedSet && processedSet.has(base)) continue;
+        const sizeNum = typeof f.size === 'number' ? f.size : Number(f.size || 0);
+        const cached = IHMService.fileCache.get(base);
+        // if cache matches remote size, skip
+        if (cached && cached.size === sizeNum) continue;
+
+        // if latest backup exists and its size matches remote size, populate cache from backup and skip
+        try {
+          const latest = backupService.getLatestBackup(base);
+          if (latest && latest.backupPath && fs.existsSync(latest.backupPath)) {
+            const stat = fs.statSync(latest.backupPath);
+            const backupSize = stat.size;
+            if (backupSize === sizeNum) {
+              try {
+                const bh = computeHashSync(latest.backupPath, 'sha256');
+                if (bh) IHMService.fileCache.set(base, { size: backupSize, hash: bh });
+                else IHMService.fileCache.set(base, { size: backupSize });
+              } catch (e) {
+                IHMService.fileCache.set(base, { size: backupSize });
+              }
+              continue;
+            }
+          }
+        } catch (e) {
+          // ignore backup errors and fall through to candidate
+        }
+
+        const modifiedAtTs = f.modifiedAt instanceof Date ? f.modifiedAt.getTime() : 0;
+        candidatesAll.push({ name: base, size: sizeNum, modifiedAtTs });
+      }
+
+      // sort by modifiedAt desc (newest first), then size desc, then name
+      candidatesAll.sort((a, b) => {
+        if (b.modifiedAtTs !== a.modifiedAtTs) return b.modifiedAtTs - a.modifiedAtTs;
+        if (b.size !== a.size) return b.size - a.size;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Apply thinning: keep at most IHM_MAX_CANDIDATES and ensure a min gap between selected items
+      const maxCandidates = Number(process.env.IHM_MAX_CANDIDATES || 5);
+      const minGap = Number(process.env.IHM_MIN_GAP_MS || 120000); // default 2 minutes
+      const selected: Array<{ name: string; size: number }> = [];
+      let lastSelectedTs = 0;
+      for (const c of candidatesAll) {
+        if (selected.length >= maxCandidates) break;
+        if (selected.length === 0) {
+          selected.push({ name: c.name, size: c.size });
+          lastSelectedTs = c.modifiedAtTs;
+          continue;
+        }
+        // if timestamps available, require minGap, otherwise accept until maxCandidates
+        if (c.modifiedAtTs === 0 || lastSelectedTs === 0) {
+          selected.push({ name: c.name, size: c.size });
+          lastSelectedTs = c.modifiedAtTs;
+        } else {
+          if (Math.abs(lastSelectedTs - c.modifiedAtTs) >= minGap) {
+            selected.push({ name: c.name, size: c.size });
+            lastSelectedTs = c.modifiedAtTs;
+          }
+        }
+      }
+      const candidates = selected;
+      return candidates;
+    } catch (error: any) {
+      throw new Error('Erro listando arquivos no IHM: ' + (error && error.message ? error.message : String(error)));
+    } finally {
+      this.client.close();
+    }
+  }
+
+  /** Download a single remote file and update the in-memory cache (size+hash). */
+  async downloadFile(name: string, localDir: string) {
+    const remoteDir = '/InternalStorage/data/';
+    try {
+      await this.client.access({ host: this.IP, user: this.user, password: this.password });
+      await this.client.cd(remoteDir);
+      const localPath = path.join(localDir, name);
+      await this.client.downloadTo(localPath, name);
+      // update cache
+      try {
+        const hash = computeHashSync(localPath, 'sha256');
+        const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
+        if (hash && typeof hash === 'string') IHMService.fileCache.set(name, { size, hash });
+        else IHMService.fileCache.set(name, { size });
+      } catch (e) {
+        try { const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0; IHMService.fileCache.set(name, { size }); } catch (e2) { /* ignore */ }
+      }
+      return { localPath, name };
+    } catch (error: any) {
+      throw new Error('Erro baixando arquivo no IHM: ' + (error && error.message ? error.message : String(error)));
     } finally {
       this.client.close();
     }

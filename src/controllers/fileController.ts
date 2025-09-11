@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import backupService from '../services/backupService';
-import { processCSV } from '../services/csvService';
 import parserService from '../services/parserService';
 import * as path from 'path';
 
@@ -15,13 +14,12 @@ export default {
       }
       const meta = await backupService.backupFile(file);
       const ext = path.extname(meta.originalName).toLowerCase();
-      let parseResult = null;
       if (ext === '.csv' || file.mimetype === 'text/csv') {
-        parseResult = await processCSV({ path: meta.workPath });
-        const processed = await parserService.processFile(meta.workPath);
-        return res.json({ meta, parse: parseResult, processed });
+        const csvPath = meta.workPath || meta.backupPath;
+        const processed = await parserService.processFile(csvPath);
+        return res.json({ meta, processed });
       }
-      res.json({ meta, parse: parseResult });
+      res.json({ meta });
     } catch (error) {
       next(error);
     }

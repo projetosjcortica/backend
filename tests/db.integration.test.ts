@@ -6,7 +6,7 @@ import { initDb, insertRelatorioRows, countRelatorioByFile, deleteRelatorioByFil
 
 jest.setTimeout(20000);
 
-test.skip // Skip by default, requires real DB connection
+// test.skip // Skip by default, requires real DB connection
 
 test('db integration: process sample.csv, insert to relatorio, count and delete', async () => {
   // This test exercises the real DB configured via env (.env) — will fail if DB is unreachable.

@@ -1,71 +1,104 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const backupDir = path.resolve(__dirname, '..', '..', 'backups');
-const downloadsDir = path.resolve(__dirname, '..', '..', 'downloads');
-if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
-if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
+const DEFAULT_BACKUP_DIR = path.resolve(__dirname, '..', '..', 'backups');
+const ENV_WORK_DIR = process.env.BACKUP_WORKDIR ? path.resolve(process.cwd(), process.env.BACKUP_WORKDIR) : null;
+
+if (!fs.existsSync(DEFAULT_BACKUP_DIR)) fs.mkdirSync(DEFAULT_BACKUP_DIR, { recursive: true });
+if (ENV_WORK_DIR && !fs.existsSync(ENV_WORK_DIR)) fs.mkdirSync(ENV_WORK_DIR, { recursive: true });
+
+export interface BackupMeta {
+  originalName: string;
+  storedName: string;
+  mimetype?: string | null;
+  size?: number | null;
+  backupPath: string;
+  workPath?: string | null;
+  timestamp: string;
+}
 
 class BackupService {
   dir: string;
-  downloads: string;
-  // simple in-memory cache for listing metadata
-  private metaCache: Map<string, any> = new Map();
+  workdir: string | null;
+  private metaCache: Map<string, BackupMeta> = new Map();
 
-  constructor(dir = backupDir, downloads = downloadsDir) {
+  constructor(dir = DEFAULT_BACKUP_DIR, workdir: string | null = ENV_WORK_DIR) {
     this.dir = dir;
-    this.downloads = downloads;
-    this._loadMetaCache();
+    this.workdir = workdir;
+    this.loadMetaCache();
   }
 
-  private _loadMetaCache() {
+  /** Load existing metadata JSON files into the in-memory cache. */
+  private loadMetaCache() {
     try {
-      const items = fs.readdirSync(this.dir).filter(f => f.endsWith('.json'));
-      for (const m of items) {
+      const files = fs.readdirSync(this.dir).filter(f => f.endsWith('.json'));
+      for (const f of files) {
         try {
-          const content = fs.readFileSync(path.join(this.dir, m), 'utf8');
-          const parsed = JSON.parse(content);
-          this.metaCache.set(parsed.storedName, parsed);
+          const raw = fs.readFileSync(path.join(this.dir, f), 'utf8');
+          const meta = JSON.parse(raw) as BackupMeta;
+          if (meta && meta.storedName) this.metaCache.set(meta.storedName, meta);
         } catch (e) {
-          // ignore corrupt
+          // skip corrupt metadata file
         }
       }
     } catch (e) {
-      // ignore
+      // dir may not exist or be readable; ignore
     }
   }
 
-  async backupFile(file: any) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const baseName = `${timestamp}-${file.originalname}`;
-    const backupPath = path.join(this.dir, baseName);
-  const workPath = path.join(this.downloads, baseName);
+  private writeMeta(meta: BackupMeta) {
+    const metaPath = path.join(this.dir, meta.storedName + '.json');
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    this.metaCache.set(meta.storedName, meta);
+  }
+
+  private makeTimestamp() {
+    return new Date().toISOString().replace(/[:.]/g, '-');
+  }
+
+  /**
+   * Backup a file object (supports { path } or { buffer }).
+   * Returns metadata about the stored backup.
+   */
+  async backupFile(file: { path?: string; buffer?: Buffer; originalname: string; mimetype?: string; size?: number }) {
+    const ts = this.makeTimestamp();
+    const storedName = `${ts}-${file.originalname}`;
+    const backupPath = path.join(this.dir, storedName);
+    let workPath: string | null = null;
+
     if (file.buffer) {
       fs.writeFileSync(backupPath, file.buffer);
-  fs.writeFileSync(workPath, file.buffer);
+      if (this.workdir) {
+        workPath = path.join(this.workdir, storedName);
+        fs.writeFileSync(workPath, file.buffer);
+      }
     } else if (file.path) {
       fs.copyFileSync(file.path, backupPath);
-      fs.copyFileSync(file.path, workPath);
+      if (this.workdir) {
+        workPath = path.join(this.workdir, storedName);
+        fs.copyFileSync(file.path, workPath);
+      }
     } else {
-      throw new Error('Unsupported file object');
+      throw new Error('Unsupported file object for backup');
     }
-    const meta = {
+
+    const finalSize = file.size ?? (fs.existsSync(backupPath) ? fs.statSync(backupPath).size : null);
+    const meta: BackupMeta = {
       originalName: file.originalname,
-      storedName: baseName,
-      mimetype: file.mimetype,
-      size: file.size || (file.buffer && file.buffer.length) || null,
+      storedName,
+      mimetype: file.mimetype || null,
+      size: typeof finalSize === 'number' ? finalSize : null,
       backupPath,
       workPath,
       timestamp: new Date().toISOString(),
     };
-    const metaPath = path.join(this.dir, baseName + '.json');
-    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
-    this.metaCache.set(baseName, meta);
+
+    this.writeMeta(meta);
     return meta;
   }
 
   listBackups() {
-    return Array.from(this.metaCache.values()).sort((a: any, b: any) => (a.timestamp < b.timestamp ? 1 : -1));
+    return Array.from(this.metaCache.values()).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
   }
 
   getLatestBackup(originalName: string) {
@@ -83,26 +116,21 @@ class BackupService {
   restoreToWork(storedName: string) {
     const meta = this.getMeta(storedName);
     if (!meta) throw new Error('Backup not found');
-    const src = meta.backupPath;
-  const dest = path.join(this.downloads, meta.storedName);
-    fs.copyFileSync(src, dest);
+    if (!this.workdir) throw new Error('No workdir configured for restore');
+    const dest = path.join(this.workdir, meta.storedName);
+    fs.copyFileSync(meta.backupPath, dest);
     return dest;
   }
 
-  // cleanup older backups keeping `keep` latest
   cleanup(keep = 10) {
     const all = this.listBackups();
     const toRemove = all.slice(keep);
     for (const m of toRemove) {
-      try {
-        fs.unlinkSync(m.backupPath);
-      } catch (e) {}
-      try {
-        fs.unlinkSync(m.workPath);
-      } catch (e) {}
-      try {
-        fs.unlinkSync(path.join(this.dir, m.storedName + '.json'));
-      } catch (e) {}
+      try { fs.unlinkSync(m.backupPath); } catch (e) {}
+      if (m.workPath) {
+        try { fs.unlinkSync(m.workPath); } catch (e) {}
+      }
+      try { fs.unlinkSync(path.join(this.dir, m.storedName + '.json')); } catch (e) {}
       this.metaCache.delete(m.storedName);
     }
     return this.listBackups();

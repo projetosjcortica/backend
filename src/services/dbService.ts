@@ -3,8 +3,9 @@ import { DataSource } from 'typeorm';
 import { Relatorio } from '../entities/Relatorio';
 import BaseService from './BaseService';
 
-const useMysql = (process.env.DATABASE_TYPE === 'mysql') || !!process.env.MYSQL_HOST;
+const useMysql = true;
 const DB_PATH = process.env.DATABASE_PATH || 'data.sqlite';
+const MYSQL_HOST = process.env.MYSQL_HOST || 'localhost'; // Garantir localhost como padrão
 
 class DBService extends BaseService {
   public ds: DataSource;
@@ -14,7 +15,7 @@ class DBService extends BaseService {
     this.ds = useMysql
       ? new DataSource({
           type: 'mysql',
-          host: process.env.MYSQL_HOST || 'localhost',
+          host: MYSQL_HOST, // Usar localhost como padrão
           port: Number(process.env.MYSQL_PORT || 3306),
           username: process.env.MYSQL_USER || process.env.DB_USER || 'root',
           password: process.env.MYSQL_PASS || process.env.DB_PASS || 'root',
@@ -33,7 +34,15 @@ class DBService extends BaseService {
   }
 
   async init(): Promise<void> {
-    if (!this.ds.isInitialized) await this.ds.initialize();
+    if (!this.ds.isInitialized) {
+      try {
+        await this.ds.initialize();
+        console.log('Database connection established successfully.');
+      } catch (error) {
+        console.error('Failed to connect to the database:', error);
+        throw new Error('Database connection error. Please check your configuration.');
+      }
+    }
   }
 
   async destroy(): Promise<void> {
@@ -43,13 +52,17 @@ class DBService extends BaseService {
   async insertRelatorioRows(rows: any[], processedFile: string) {
     await this.init();
     const repo = this.ds.getRepository(Relatorio);
+    // console.log(rows);
     const entities = rows.map(r => {
       const base: any = {
         Dia: r.Dia || r.date || null,
         Hora: r.Hora || r.time || null,
         Nome: r.Nome || r.label || null,
-        Form1: r.Form1 != null ? Number(r.Form1) : null,
-        Form2: r.Form2 != null ? Number(r.Form2) : null,
+        // accept multiple possible property names coming from parser/mapRow
+        Form1:
+          r.Form1 != null ? Number(r.Form1) : (r.form1 != null ? Number(r.form1) : (r.group != null ? Number(r.group) : null)),
+        Form2:
+          r.Form2 != null ? Number(r.Form2) : (r.form2 != null ? Number(r.form2) : (r.flag != null ? Number(r.flag) : null)),
         processedFile,
       };
       for (let i = 1; i <= 40; i++) {
@@ -84,6 +97,13 @@ class DBService extends BaseService {
     const ids = items.map((i: any) => i.id);
     await repo.delete(ids);
     return ids.length;
+  }
+
+  async syncSchema(): Promise<void> {
+    await this.init();
+    console.log('Synchronizing database schema...');
+    await this.ds.synchronize();
+    console.log('Database schema synchronized.');
   }
 }
 

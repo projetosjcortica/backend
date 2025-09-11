@@ -1,18 +1,29 @@
 import * as http from 'http';
 import * as https from 'https';
 
+/**
+ * Realiza uma requisição HTTP POST enviando um corpo JSON.
+ * @param {string} url - URL para onde a requisição será enviada.
+ * @param {any} body - Objeto que será enviado como JSON no corpo da requisição.
+ * @param {string} [token] - Token opcional para autenticação Bearer.
+ * @returns {Promise<any>} - Retorna uma Promise que resolve com a resposta da requisição.
+ */
 export function postJson(url: string, body: any, token?: string) {
   return new Promise((resolve, reject) => {
     try {
+      // Faz o parsing da URL para extrair informações como hostname e protocolo
       const parsed = new URL(url);
-      const lib = parsed.protocol === 'https:' ? https : http;
-      const data = JSON.stringify(body);
+      const lib = parsed.protocol === 'https:' ? https : http; // Define a biblioteca correta com base no protocolo
+      const data = JSON.stringify(body); // Converte o corpo da requisição para JSON
+
+      // Define os cabeçalhos da requisição
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data).toString(),
       };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token) headers['Authorization'] = `Bearer ${token}`; // Adiciona o cabeçalho de autenticação, se fornecido
 
+      // Configurações da requisição
       const opts: any = {
         hostname: parsed.hostname,
         port: parsed.port ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80,
@@ -21,19 +32,25 @@ export function postJson(url: string, body: any, token?: string) {
         headers,
       };
 
+      // Cria a requisição HTTP/HTTPS
       const req = lib.request(opts, (res: any) => {
         let raw = '';
-        res.on('data', (c: any) => (raw += c));
+        res.on('data', (chunk: any) => (raw += chunk)); // Coleta os dados da resposta
         res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) return resolve({ status: res.statusCode, body: raw });
-          return reject(new Error(`POST ${url} failed ${res.statusCode}: ${raw}`));
+          try {
+            const parsedResponse = JSON.parse(raw); // Tenta fazer o parsing da resposta como JSON
+            resolve(parsedResponse);
+          } catch (e) {
+            resolve(raw); // Retorna a resposta como string se o parsing falhar
+          }
         });
       });
-      req.on('error', (err: any) => reject(err));
-      req.write(data);
-      req.end();
+
+      req.on('error', (err: any) => reject(err)); // Trata erros na requisição
+      req.write(data); // Envia o corpo da requisição
+      req.end(); // Finaliza a requisição
     } catch (err) {
-      reject(err);
+      reject(err); // Trata erros gerais
     }
   });
 }

@@ -36,9 +36,9 @@ class BackupObserver implements Observer {
       if (payload.originalPath && fs.existsSync(payload.originalPath)) {
         await backupService.backupFile({ path: payload.originalPath, originalname: payload.filename, mimetype: 'text/csv', size: fs.statSync(payload.originalPath).size });
       }
-      // also backup processed JSON if exists under downloads/processed
-      const downloadsDir = path.resolve(__dirname, '..', '..', 'downloads');
-      const processedPath = path.join(downloadsDir, 'processed', payload.filename + '.json');
+  // also backup processed JSON if exists under collector tmp processed
+  const downloadsDir = path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp');
+  const processedPath = path.join(downloadsDir, 'processed', payload.filename + '.json');
       if (fs.existsSync(processedPath)) {
         await backupService.backupFile({ path: processedPath, originalname: payload.filename + '.json', mimetype: 'application/json', size: fs.statSync(processedPath).size });
       }
@@ -66,8 +66,8 @@ class DbObserver implements Observer {
 class LogObserver implements Observer {
   async update(payload: NotifyPayload) {
     try {
-      const downloadsDir = path.resolve(__dirname, '..', '..', 'downloads');
-      const logPath = path.join(downloadsDir, 'process_logs.jsonl');
+  const downloadsDir = path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp');
+  const logPath = path.join(downloadsDir, 'process_logs.jsonl');
       const entry = { filename: payload.filename, time: payload.lastProcessedAt, rowCount: payload.rowCount };
       fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
     } catch (e) {

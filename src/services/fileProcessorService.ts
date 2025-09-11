@@ -11,6 +11,28 @@ export interface Observer {
   update(payload: ProcessPayload): Promise<void>;
 }
 
+export interface CandidateObserver {
+  updateCandidates(candidates: Array<{ name: string; size: number }>): Promise<Array<{ name: string; size: number }>>;
+}
+
+class CandidateSubject {
+  private observers: Set<CandidateObserver> = new Set();
+  attach(o: CandidateObserver) { this.observers.add(o); }
+  detach(o: CandidateObserver) { this.observers.delete(o); }
+  async notify(candidates: Array<{ name: string; size: number }>) {
+    let current = candidates.slice();
+    for (const o of Array.from(this.observers)) {
+      try {
+        const res = await o.updateCandidates(current);
+        if (Array.isArray(res)) current = res;
+      } catch (e) {
+        console.error('Candidate observer error', e);
+      }
+    }
+    return current;
+  }
+}
+
 class ProcessorSubject {
   private observers: Set<Observer> = new Set();
 
@@ -27,7 +49,7 @@ class ProcessorSubject {
 
 class BackupObserver implements Observer {
   async update(payload: ProcessPayload) {
-    const candidates = [path.resolve(process.cwd(), 'downloads', payload.filename), path.resolve(process.cwd(), payload.filename)];
+  const candidates = [path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp', payload.filename), path.resolve(process.cwd(), payload.filename)];
     let found: string | null = null;
     for (const c of candidates) {
       if (fs.existsSync(c)) { found = c; break; }
@@ -45,7 +67,7 @@ class CleanupObserver implements Observer {
     if (cnt >= payload.rowCount) {
       const meta = backupService.listBackups().find((m: any) => m.originalName === payload.filename || m.storedName?.endsWith(payload.filename));
       if (meta) {
-        const local = path.resolve(process.cwd(), 'downloads', payload.filename);
+        const local = path.resolve(process.cwd(), process.env.COLLECTOR_TMP || 'tmp', payload.filename);
         if (fs.existsSync(local)) fs.unlinkSync(local);
       }
     }
@@ -54,13 +76,17 @@ class CleanupObserver implements Observer {
 
 class FileProcessorService extends BaseService {
   private subject: ProcessorSubject;
+  private candidateSubject: CandidateSubject;
 
   constructor() {
     super('FileProcessorService');
     this.subject = new ProcessorSubject();
+  this.candidateSubject = new CandidateSubject();
     // attach default observers
     this.subject.attach(new BackupObserver());
     this.subject.attach(new CleanupObserver());
+  // attach self as default candidate observer
+  this.candidateSubject.attach(this as unknown as CandidateObserver);
   }
   private mapRow(r: ParserRow | any): any {
     const base: any = {};
@@ -119,12 +145,51 @@ class FileProcessorService extends BaseService {
     const existing = await db.countRelatorioByFile(filename);
     if (existing > 0) return { skipped: true, reason: 'already processed', rowsCount: mapped.length };
 
+    // debug: log first few mapped rows to diagnose null fields arriving in DB
+    try {
+      const sample = mapped.slice(0, 3).map((m: any) => {
+        const copy: any = {};
+        for (const k of Object.keys(m)) copy[k] = m[k];
+        return copy;
+      });
+      console.log('[fileProcessor] mapped sample before DB insert:', JSON.stringify(sample, null, 2));
+    } catch (e) {
+      // ignore logging errors
+    }
+
     const inserted = await db.insertRelatorioRows(mapped, filename);
 
     const payload: ProcessPayload = { filename, lastProcessedAt: new Date().toISOString(), rowCount: mapped.length };
     await this.subject.notify(payload);
 
     return { processedPath: fullPath, rowsCount: mapped.length, insertedCount: Array.isArray(inserted) ? inserted.length : null };
+  }
+
+  // CandidateObserver implementation: by default filter out files already present in DB
+  async updateCandidates(candidates: Array<{ name: string; size: number }>) {
+    const out: Array<{ name: string; size: number }> = [];
+    for (const c of candidates) {
+      try {
+        const cnt = await db.countRelatorioByFile(c.name);
+        if (!cnt || cnt === 0) out.push(c);
+      } catch (e) {
+        // on error, conservatively include candidate
+        out.push(c);
+      }
+    }
+    return out;
+  }
+
+  async notifyCandidates(candidates: Array<{ name: string; size: number }>) {
+    return this.candidateSubject.notify(candidates);
+  }
+
+  attachCandidateObserver(o: CandidateObserver) { this.candidateSubject.attach(o); }
+  detachCandidateObserver(o: CandidateObserver) { this.candidateSubject.detach(o); }
+
+  async preFilterCandidates(candidates: Array<{ name: string; size: number }>) {
+    // potential extension point for observers; currently passthrough
+    return candidates;
   }
 
   attachObserver(o: Observer) { this.subject.attach(o); }
