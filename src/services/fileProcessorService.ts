@@ -1,4 +1,4 @@
-import parserService from './parserService';
+import parserService, { ParserRow, ParserResult } from './parserService';
 import backupService from './backupService';
 import * as db from './dbService';
 import * as path from 'path';
@@ -62,14 +62,13 @@ class FileProcessorService extends BaseService {
     this.subject.attach(new BackupObserver());
     this.subject.attach(new CleanupObserver());
   }
-  private mapRow(r: any): any {
+  private mapRow(r: ParserRow | any): any {
     const base: any = {};
-    // support parserService output (datetime) or legacy date/time/name fields
+    // prefer canonical ParserRow shape (r.datetime)
     if (r.datetime) {
-      // parserService provides ISO datetime
       try {
         const dt = new Date(r.datetime);
-        base.Dia = `${dt.getDate().toString().padStart(2, '0')}/${(dt.getMonth()+1).toString().padStart(2,'0')}/${dt.getFullYear().toString().slice(-2)}`;
+        base.Dia = `${dt.getDate().toString().padStart(2, '0')}/${(dt.getMonth() + 1).toString().padStart(2, '0')}/${dt.getFullYear().toString().slice(-2)}`;
         base.Hora = dt.toTimeString().split(' ')[0];
       } catch (e) {
         base.Dia = r.date || r.Dia || r.DiaStr || null;
@@ -79,12 +78,15 @@ class FileProcessorService extends BaseService {
       base.Dia = r.date || r.Dia || r.DiaStr || null;
       base.Hora = r.time || r.Hora || null;
     }
+
     base.Nome = r.label || r.Nome || r.NomeStr || null;
+
     // Form1/Form2 may be present explicitly or as the first two numeric values
     const fv0 = Array.isArray(r.values) && r.values.length > 0 ? r.values[0] : null;
     const fv1 = Array.isArray(r.values) && r.values.length > 1 ? r.values[1] : null;
     base.Form1 = r.Form1 != null ? r.Form1 : (r.form1 != null ? r.form1 : (fv0 != null ? fv0 : null));
     base.Form2 = r.Form2 != null ? r.Form2 : (r.form2 != null ? r.form2 : (fv1 != null ? fv1 : null));
+
     if (Array.isArray(r.values) && r.values.length > 0) {
       for (let i = 1; i <= 40; i++) base[`Prod_${i}`] = r.values[i - 1] != null ? r.values[i - 1] : null;
     } else {
@@ -93,12 +95,13 @@ class FileProcessorService extends BaseService {
         base[k] = r[k] != null ? r[k] : null;
       }
     }
+
     return base;
   }
 
   async processFile(fullPath: string) {
-    const parsed: any = await parserService.processFile(fullPath as any);
-    const rows = parsed && (Array.isArray(parsed.rows) ? parsed.rows : Array.isArray(parsed.data) ? parsed.data : Array.isArray(parsed) ? parsed : []) || [];
+    const parsed: ParserResult = await parserService.processFile(fullPath as any);
+    const rows: ParserRow[] = Array.isArray(parsed.rows) ? parsed.rows : [];
     let mapped = rows.map((r: any) => this.mapRow(r));
 
     // filter out completely empty rows (no Nome and no numeric data)

@@ -68,6 +68,14 @@ class BackupService {
     return Array.from(this.metaCache.values()).sort((a: any, b: any) => (a.timestamp < b.timestamp ? 1 : -1));
   }
 
+  getLatestBackup(originalName: string) {
+    const all = this.listBackups();
+    for (const m of all) {
+      if (m.originalName === originalName || (m.storedName && m.storedName.endsWith(originalName))) return m;
+    }
+    return null;
+  }
+
   getMeta(storedName: string) {
     return this.metaCache.get(storedName) || null;
   }

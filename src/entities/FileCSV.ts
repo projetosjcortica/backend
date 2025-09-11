@@ -1,6 +1,5 @@
 import * as fs from 'fs';
-import { parse } from 'fast-csv';
-import { Readable } from 'stream';
+import parserService from '../services/parserService';
 
 export default class FileCSV {
   filePath: string | null = null;
@@ -16,44 +15,21 @@ export default class FileCSV {
   async load() {
     if (!this.filePath) throw new Error('filePath not set');
     this.rows = [];
-    // Many IHM CSVs are simple, comma-delimited without headers. Use a small, robust parser
-    // that produces an object per row with a `label` property (used by tests).
-    return new Promise((resolve, reject) => {
-      try {
-        const raw = fs.readFileSync(this.filePath!, 'utf8');
-        const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  // many fixtures don't include headers but some callers expect the first line to be
-  // treated as header (legacy behavior). To match tests, skip the first line if there
-  // are multiple lines.
-  const dataLines = lines.length > 1 ? lines.slice(1) : lines;
-  for (const ln of dataLines) {
-          // naive split by comma (fixture contains no quoted commas)
-          const cols = ln.split(',').map(c => c.trim());
-          if (cols.length < 3) continue; // skip lines that don't have at least date,time,label
-          const date = cols[0] || null;
-          const time = cols[1] || null;
-          const label = cols[2] || null;
-          if (!label) continue; // tests expect rows to have a label
-          const group = cols[3] || null;
-          const flag = cols[4] || null;
-          const values = cols.slice(5).map(v => {
-            const n = Number(v);
-            return Number.isNaN(n) ? null : n;
-          });
-          const row = { date, time, label, group: group ? Number(group) : null, flag: flag ? Number(flag) : null, values };
-          this.rows.push(row);
-          // populate index
-          if (label) {
-            const arr = this.indexByLabel.get(label) || [];
-            arr.push(row);
-            this.indexByLabel.set(label, arr);
-          }
-        }
-        resolve({ rows: this.rows.length });
-      } catch (err) {
-        reject(err);
-      }
-    });
+    // delegate to parserService to normalize CSV formats
+    const res: any = await parserService.processFile(this.filePath!);
+    if (res && Array.isArray(res.rows)) {
+      this.rows = res.rows.map((r: any) => ({
+        date: r.date || null,
+        time: r.time || null,
+        label: r.label || r.Nome || null,
+        group: r.group || null,
+        flag: r.flag || null,
+        values: r.values || [],
+        datetime: r.datetime || null,
+      }));
+    }
+    this.buildIndex();
+    return { rows: this.rows.length };
   }
 
   toJSON() {
