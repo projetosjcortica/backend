@@ -3,10 +3,12 @@ import * as path from 'path';
 
 const DEFAULT_BACKUP_DIR = path.resolve(__dirname, '..', '..', 'backups');
 const ENV_WORK_DIR = process.env.BACKUP_WORKDIR ? path.resolve(process.cwd(), process.env.BACKUP_WORKDIR) : null;
+// If BACKUP_WRITE_FILES=false, the service should not persist temporary work files on disk.
+const BACKUP_WRITE_FILES = process.env.BACKUP_WRITE_FILES !== 'false';
 
 // garante que diretórios existam na inicialização do módulo
-if (!fs.existsSync(DEFAULT_BACKUP_DIR)) fs.mkdirSync(DEFAULT_BACKUP_DIR, { recursive: true });
-if (ENV_WORK_DIR && !fs.existsSync(ENV_WORK_DIR)) fs.mkdirSync(ENV_WORK_DIR, { recursive: true });
+if (BACKUP_WRITE_FILES && !fs.existsSync(DEFAULT_BACKUP_DIR)) fs.mkdirSync(DEFAULT_BACKUP_DIR, { recursive: true });
+if (BACKUP_WRITE_FILES && ENV_WORK_DIR && !fs.existsSync(ENV_WORK_DIR)) fs.mkdirSync(ENV_WORK_DIR, { recursive: true });
 
 /**
  * Metadados armazenados para cada backup.
@@ -72,22 +74,42 @@ class BackupService {
     const ts = this.makeTimestamp();
     const storedName = `${ts}-${file.originalname}`;
     const backupPath = path.join(this.dir, storedName);
+
     let workPath: string | null = null;
 
-    if (file.buffer) {
-      fs.writeFileSync(backupPath, file.buffer);
-      if (this.workdir) {
-        workPath = path.join(this.workdir, storedName);
-        fs.writeFileSync(workPath, file.buffer);
-      }
-    } else if (file.path) {
-      fs.copyFileSync(file.path, backupPath);
-      if (this.workdir) {
-        workPath = path.join(this.workdir, storedName);
-        fs.copyFileSync(file.path, workPath);
+    if (!BACKUP_WRITE_FILES) {
+      // If not writing files, we still accept buffer or path but we will not persist work copies.
+      if (file.buffer) {
+        // leave only backupPath written (if default dir writable), otherwise skip file write
+        try {
+          fs.writeFileSync(backupPath, file.buffer);
+        } catch (e) {
+          // best-effort: do not throw, continue with metadata only
+        }
+      } else if (file.path) {
+        try {
+          // copy to backup dir if possible; otherwise skip
+          fs.copyFileSync(file.path, backupPath);
+        } catch (e) {
+          // skip
+        }
       }
     } else {
-      throw new Error('Objeto de arquivo inválido para backup');
+      if (file.buffer) {
+        fs.writeFileSync(backupPath, file.buffer);
+        if (this.workdir) {
+          workPath = path.join(this.workdir, storedName);
+          fs.writeFileSync(workPath, file.buffer);
+        }
+      } else if (file.path) {
+        fs.copyFileSync(file.path, backupPath);
+        if (this.workdir) {
+          workPath = path.join(this.workdir, storedName);
+          fs.copyFileSync(file.path, workPath);
+        }
+      } else {
+        throw new Error('Objeto de arquivo inválido para backup');
+      }
     }
 
     const finalSize = file.size ?? (fs.existsSync(backupPath) ? fs.statSync(backupPath).size : null);

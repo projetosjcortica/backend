@@ -2,6 +2,12 @@
 
  Este projeto coleta arquivos CSV de um equipamento IHM via FTP, processa-os para uma forma JSON normalizada, armazena os arquivos originais em backup e persiste registros na tabela `Relatorio` utilizando TypeORM. Além disso, expõe uma API Express para consultar dados e permitir upload manual de arquivos.
 
+## TODO
+
+ - [ ] Renomear os Filtros
+ - [ ] Ajustar o `MateriaPrima.ts` para ficar igual ao DB
+ - [ ] Processar as informações do FrontEnd pro BackEnd via `childProcess.on(...)`
+ 
  ## Início rápido
 
  1. Instale dependências:

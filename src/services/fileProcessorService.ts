@@ -1,6 +1,7 @@
 import parserService, { ParserRow, ParserResult } from './parserService';
 import BackupService from './backupService';
 import * as db from './dbService';
+import localBackupDb from './localBackupDbService';
 import * as path from 'path';
 import * as fs from 'fs';
 import BaseService from './BaseService';
@@ -171,7 +172,14 @@ class FileProcessorService extends BaseService {
       // ignore logging errors
     }
 
-    const inserted = await db.insertRelatorioRows(mapped, filename);
+    let inserted: any = null;
+    if (process.env.BACKUP_WRITE_FILES === 'false') {
+      // Save to local SQLite backup DB instead of main DB
+      await localBackupDb.saveRelatorioRows(mapped, filename);
+      inserted = mapped;
+    } else {
+      inserted = await db.insertRelatorioRows(mapped, filename);
+    }
 
     const payload: ProcessPayload = { filename, lastProcessedAt: new Date().toISOString(), rowCount: mapped.length };
     await this.subject.notify(payload);

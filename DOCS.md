@@ -36,6 +36,19 @@
  - Testes unitários: `npm test`
  - Testes de integração com IHM só serão executados quando `RUN_IHM_INTEGRATION=true`.
 
+Banco de backup local (opcional)
+
+Este repositório suporta armazenar um backup local em SQLite (`local_backup.sqlite`) que pode ser usado para popular o banco principal posteriormente. As opções relevantes:
+
+- `LOCAL_BACKUP_DB_PATH`: caminho para o arquivo SQLite local (padrão `./local_backup.sqlite`).
+- `BACKUP_WRITE_FILES`: se `false`, o serviço de backup evita criar cópias de trabalho locais e tenta manter apenas metadados; padrão `true` (escreve arquivos em `backups/`).
+
+Comportamento esperado desejado pelo pedido:
+
+- Ao baixar arquivos do IHM, o sistema só fará o download se os critérios forem atendidos (hash/diferença). Não mantenha cópias locais adicionais além do backup necessário.
+- Se `BACKUP_WRITE_FILES=false`, o serviço evitará criar workdir locais e só gravará o backup final quando possível; se o filesystem não permitir, gravará apenas metadados.
+
+
  Principais arquivos
 
  - `src/services/parserService.ts` — parser canônico de CSVs
