@@ -6,7 +6,7 @@
 
  - [x] Renomear os Filtros
  - [x] Ajustar o `MateriaPrima.ts` para ficar igual ao DB
- - [-] Processar as informações do FrontEnd pro BackEnd via `childProcess.on(...)`
+ - [ ] Processar as informações do FrontEnd pro BackEnd via `childProcess.on(...)`
  
  ## Início rápido
 
