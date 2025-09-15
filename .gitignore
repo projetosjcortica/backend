@@ -28,7 +28,6 @@ debug/
 logs/
 backups/
 downloads/
-types/
 tmp/
 .github/
 docs/

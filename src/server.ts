@@ -16,6 +16,7 @@ import dbController from './controllers/dbController';
 import fileController from './controllers/fileController';
 import ihmController from './controllers/ihmController';
 import paginateController from './controllers/paginateController';
+import syncController from './controllers/syncController';
 
 // Cria a aplicação Express
 const app = express();
@@ -42,6 +43,7 @@ app.get('/api/ihm/list', ihmController.list);
 app.get('/api/relatorio', paginateController.paginate);
 app.get('/api/relatorio/files', paginateController.listFiles);
 app.get('/api/relatorio/count', paginateController.countFile);
+app.post('/api/sync/local-to-main', syncController.syncLocalToMain);
 
 // Middleware de tratamento de erros (sempre por último)
 app.use(errorHandler);
