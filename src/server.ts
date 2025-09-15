@@ -22,6 +22,13 @@ import syncController from './controllers/syncController';
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
+// Recebe o config 
+process.on('config', (data) => {
+  console.log('Configuração recebida:', data);
+
+});
+
+
 // Middlewares de segurança, parsing e logs
 app.use(helmet());
 app.use(cors());
@@ -41,10 +48,10 @@ app.post('/api/files/upload', fileController.uploadFile);
 app.post('/api/ihm/fetch', ihmController.fetchLatestFromIHM);
 app.get('/api/ihm/list', ihmController.list);
 app.get('/api/relatorio', paginateController.paginate);
-app.get('/api/relatorio/files', paginateController.listFiles);
-app.get('/api/relatorio/count', paginateController.countFile);
+// app.get('/api/relatorio/files', paginateController.listFiles);
+// app.get('/api/relatorio/count', paginateController.countFile);
 app.post('/api/sync/local-to-main', syncController.syncLocalToMain);
-
+app.post('/api/materiaprima', dbController.setupMateriaPrima);
 // Middleware de tratamento de erros (sempre por último)
 app.use(errorHandler);
 

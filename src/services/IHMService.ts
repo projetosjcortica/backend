@@ -57,9 +57,7 @@ export default class IHMService {
       .filter(Boolean) as RegExp[];
 
     const defaultPatterns: RegExp[] = [
-      /_sys/i,
-      /^Relatorio_\d{2}_\d{2}(_sys)?\.csv$/i,
-      /^Relatorio_\d{1,2}\.csv$/i
+      /^Relatorio_(\d{4}_\d{2}_sys|2)\.csv$/mig,
     ];
 
     this.compiledPatterns = [...userPatterns, ...defaultPatterns];
@@ -77,16 +75,34 @@ export default class IHMService {
     }
 
     const lowerCaseName = fileName.toLowerCase();
-
-    if (/_01\.csv$/i.test(lowerCaseName)) {
-      this.memoizedExcluded.set(fileName, false);
-      return false;
+    if (this.fileCache.has(lowerCaseName)) {
+      const cached = this.fileCache.get(lowerCaseName)!;
+      const stats = fs.existsSync(fileName
+        ? fs.statSync(fileName)
+        : { size: 0 });
+      if (cached.size === stats.size) {
+        if (cached.hash) {
+          const currentHash = computeHashSync(fileName);
+          if (currentHash === cached.hash) {
+            return this.memoizedExcluded.get(fileName) || false;
+          }
+          cached.hash = currentHash;
+          this.fileCache.set(lowerCaseName, cached);
+          return this.memoizedExcluded.get(fileName) || false;
+        }
+        return this.memoizedExcluded.get(fileName) || false;
+      }
+      cached.size = stats.size;
+      this.fileCache.set(lowerCaseName, cached);
+      return this.memoizedExcluded.get(fileName) || false;
+    } else {
+      const
+        stats = fs.existsSync(fileName
+          ? fs.statSync(fileName)
+          : { size: 0 });
+      this.fileCache.set(lowerCaseName, { size: stats.size });
     }
 
-    if (/_02\.csv$/i.test(lowerCaseName) || /_sys/i.test(lowerCaseName)) {
-      this.memoizedExcluded.set(fileName, true);
-      return true;
-    }
 
     if (!this.compiledPatterns) {
       this.setExcludePatterns(process.env.IHM_EXCLUDE_REGEX || '');
@@ -191,17 +207,8 @@ export default class IHMService {
   async getArc(tmpDir: string): Promise<{ localPath: string; file: string } | null> {
     const files = await this.findAndDownloadNewFiles(tmpDir);
     if (!files || files.length === 0) return null;
-  const f = files[0]!;
-  return { localPath: f.localPath, file: f.name };
-  }
-
-  /**
-   * Método para listar arquivos disponíveis no servidor IHM
-   */
-  async listFiles(): Promise<string[]> {
-    console.log('Conectando ao servidor IHM para listar arquivos...');
-    // Simulação de retorno de arquivos
-    return ['file1.csv', 'file2.csv'];
+    const f = files[0]!;
+    return { localPath: f.localPath, file: f.name };
   }
 }
 
