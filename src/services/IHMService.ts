@@ -32,6 +32,26 @@ export default class IHMService {
     this.client.ftp.verbose = true;
   }
 
+   /**
+   * Lista os nomes dos arquivos CSV disponíveis no diretório remoto, aplicando filtros de exclusão.
+   * @returns {Promise<string[]>} Lista de nomes de arquivos CSV.
+   */
+  async listFiles(): Promise<string[]> {
+    const remoteDir = '/InternalStorage/data/';
+    try {
+      await this.connectToFtp();
+      const fileList = await this.client.list(remoteDir);
+      const csvFiles = fileList
+        .filter(file => file.type === FTPFileType.File && file.name.toLowerCase().endsWith('.csv'))
+        .filter(file => !IHMService.isExcludedFile(file.name));
+      return csvFiles.map(file => file.name);
+    } catch (error: any) {
+      throw new Error(`Erro ao listar arquivos: ${error.message}`);
+    } finally {
+      this.client.close();
+    }
+  }
+
   /**
    * Define padrões de exclusão para arquivos remotos.
    * @param {string | null} rawPatterns Padrões de exclusão em formato de string (separados por vírgula).
@@ -70,44 +90,22 @@ export default class IHMService {
    * @returns {boolean} Verdadeiro se o arquivo deve ser excluído, falso caso contrário.
    */
   static isExcludedFile(fileName: string): boolean {
+    /**
+     * Verifica se o arquivo deve ser excluído com base nos padrões definidos.
+     * Utiliza cache para acelerar verificações repetidas.
+     * @param {string} fileName Nome do arquivo remoto.
+     * @returns {boolean} Verdadeiro se o arquivo deve ser excluído, falso caso contrário.
+     */
     if (this.memoizedExcluded.has(fileName)) {
       return this.memoizedExcluded.get(fileName)!;
     }
 
-    const lowerCaseName = fileName.toLowerCase();
-    if (this.fileCache.has(lowerCaseName)) {
-      const cached = this.fileCache.get(lowerCaseName)!;
-      const stats = fs.existsSync(fileName
-        ? fs.statSync(fileName)
-        : { size: 0 });
-      if (cached.size === stats.size) {
-        if (cached.hash) {
-          const currentHash = computeHashSync(fileName);
-          if (currentHash === cached.hash) {
-            return this.memoizedExcluded.get(fileName) || false;
-          }
-          cached.hash = currentHash;
-          this.fileCache.set(lowerCaseName, cached);
-          return this.memoizedExcluded.get(fileName) || false;
-        }
-        return this.memoizedExcluded.get(fileName) || false;
-      }
-      cached.size = stats.size;
-      this.fileCache.set(lowerCaseName, cached);
-      return this.memoizedExcluded.get(fileName) || false;
-    } else {
-      const
-        stats = fs.existsSync(fileName
-          ? fs.statSync(fileName)
-          : { size: 0 });
-      this.fileCache.set(lowerCaseName, { size: stats.size });
-    }
-
-
+    // Garante que os padrões estejam compilados
     if (!this.compiledPatterns) {
       this.setExcludePatterns(process.env.IHM_EXCLUDE_REGEX || '');
     }
 
+    // Testa todos os padrões contra o nome do arquivo
     const isExcluded = (this.compiledPatterns || []).some(pattern => pattern.test(fileName));
     this.memoizedExcluded.set(fileName, isExcluded);
     return isExcluded;

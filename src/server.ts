@@ -18,14 +18,20 @@ import ihmController from './controllers/ihmController';
 import paginateController from './controllers/paginateController';
 import syncController from './controllers/syncController';
 
+import configService from './utils/config';
 // Cria a aplicação Express
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
 // Recebe o config 
-process.on('config', (data) => {
-  console.log('Configuração recebida:', data);
+process.on('message', async (message) => {
+  if (message.type === 'config') {
+    console.log('Configuração recebida do pai:', message.data);
+    // Atualiza a configuração do servidor
+    let data = message.data;
+    configService.processData(data )
 
+  }
 });
 
 
