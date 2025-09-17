@@ -120,6 +120,9 @@ class DBService extends BaseService {
   }
 }
 
+
+
+
 const dbService = new DBService();
 
 // exports compatíveis

@@ -18,6 +18,9 @@ import ihmController from './controllers/ihmController';
 import paginateController from './controllers/paginateController';
 import syncController from './controllers/syncController';
 
+import multer from 'multer';
+const upload = multer({ dest: 'tmp/processed/' });
+
 import configService from './utils/config';
 // Cria a aplicação Express
 const app = express();
@@ -50,7 +53,7 @@ app.get('/', (_req: Request, res: Response) => res.json({ message: 'ok' }));
 
 // Rotas principais (mapeamento explícito para funções dos controllers)
 app.get('/api/db/batches', dbController.listBatches);
-app.post('/api/files/upload', fileController.uploadFile);
+app.post('/api/files/upload', upload.single('file'), fileController.uploadFile);
 app.post('/api/ihm/fetch', ihmController.fetchLatestFromIHM);
 app.get('/api/ihm/list', ihmController.list);
 app.get('/api/relatorio', paginateController.paginate);
